@@ -18,6 +18,7 @@ use net2::{UdpBuilder, UdpSocketExt};
 use winapi::*;
 
 use event::Evented;
+use std::os::windows::io::{AsRawSocket, RawSocket};
 use sys::windows::from_raw_arc::FromRawArc;
 use sys::windows::selector::{Overlapped, ReadyBinding};
 use {poll, Poll, PollOpt, Ready, Token};
@@ -394,6 +395,12 @@ impl Evented for UdpSocket {
 impl fmt::Debug for UdpSocket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("UdpSocket").finish()
+    }
+}
+
+impl AsRawSocket for UdpSocket {
+    fn as_raw_socket(&self) -> RawSocket {
+        self.imp.inner.socket.as_raw_socket()
     }
 }
 

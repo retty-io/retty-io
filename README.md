@@ -6,9 +6,6 @@
  <a href="https://github.com/retty-io/retty-io/actions"> 
   <img src="https://github.com/retty-io/retty-io/workflows/cargo/badge.svg">
  </a>
- <a href="https://codecov.io/gh/retty-io/retty-io"> 
-  <img src="https://codecov.io/gh/retty-io/retty-io/branch/master/graph/badge.svg">
- </a>
  <a href="https://deps.rs/repo/github/retty-io/retty-io"> 
   <img src="https://deps.rs/repo/github/retty-io/retty-io/status.svg">
  </a>
