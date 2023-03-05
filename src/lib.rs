@@ -5,3 +5,5 @@
 #![warn(missing_docs)]
 
 pub mod broadcast;
+
+pub use mio_extras::{channel, timer};
