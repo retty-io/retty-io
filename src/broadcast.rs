@@ -1,5 +1,5 @@
 //! Thread safe communication broadcast channel implementing `Evented`
-use mio::{Evented, Poll, PollOpt, Ready, Registration, SetReadiness, Token};
+use super::{Evented, Poll, PollOpt, Ready, Registration, SetReadiness, Token};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{
