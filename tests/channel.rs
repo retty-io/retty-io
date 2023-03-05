@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use crossbeam::sync::WaitGroup;
+
     #[test]
     fn test_channel() -> Result<(), Box<dyn std::error::Error>> {
         let (tx, rx) = retty_io::channel();
@@ -10,26 +12,27 @@ mod tests {
             let _ = tx.send("Hello world!");
         });
 
-        let mut handler1 = None;
-        let mut handler2 = None;
+        let wg = WaitGroup::new();
         for i in 0..2 {
             let mut rx = rx.clone();
-            let h = std::thread::spawn(move || {
+            let wg = wg.clone();
+            std::thread::spawn(move || {
                 const CHANNEL: mio::Token = mio::Token(0);
 
                 let mut poll = mio::Poll::new()?;
                 let mut events = mio::Events::with_capacity(2);
-                let _ = poll
-                    .registry()
+                poll.registry()
                     .register(&mut rx, CHANNEL, mio::Interest::READABLE)?;
 
-                let _ = poll.poll(&mut events, None)?;
+                poll.poll(&mut events, None)?;
 
                 for event in events.iter() {
                     match event.token() {
                         CHANNEL => {
                             println!("receive CHANNEL {}", i);
                             let _ = rx.try_recv();
+                            drop(wg);
+                            return Ok(());
                         }
                         _ => unreachable!(),
                     }
@@ -37,18 +40,9 @@ mod tests {
 
                 Ok::<(), std::io::Error>(())
             });
-            if i == 0 {
-                handler1 = Some(h);
-            } else {
-                handler2 = Some(h);
-            }
         }
-        if let Some(h) = handler1.take() {
-            let _ = h.join();
-        }
-        if let Some(h) = handler2.take() {
-            let _ = h.join();
-        }
+
+        wg.wait();
         let _ = handler.join();
 
         Ok(())
