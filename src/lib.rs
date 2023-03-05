@@ -1,8 +1,13 @@
 // Mio targets old versions of the Rust compiler. In order to do this, uses
 // deprecated APIs.
-#![allow(bare_trait_objects, deprecated, unknown_lints)]
+#![allow(
+    bare_trait_objects,
+    deprecated,
+    unknown_lints,
+    unstable_name_collisions
+)]
 //#![deny(missing_docs, missing_debug_implementations)]
-#![cfg_attr(test, deny(warnings))]
+//#![cfg_attr(test, deny(warnings))]
 // Many of mio's public methods violate this lint, but they can't be fixed
 // without a breaking change.
 #![cfg_attr(feature = "cargo-clippy", allow(clippy::trivially_copy_pass_by_ref))]
@@ -54,8 +59,8 @@
 //! # Example
 //!
 //! ```
-//! use mio::*;
-//! use mio::net::{TcpListener, TcpStream};
+//! use retty_io::*;
+//! use retty_io::net::{TcpListener, TcpStream};
 //!
 //! // Setup some tokens to allow us to identify which event is
 //! // for which socket.
@@ -106,6 +111,7 @@
 //!
 //! ```
 
+extern crate crossbeam;
 extern crate iovec;
 extern crate net2;
 extern crate slab;

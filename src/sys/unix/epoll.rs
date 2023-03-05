@@ -241,24 +241,24 @@ impl Events {
             let mut kind = Ready::empty();
 
             if (epoll & EPOLLIN) != 0 {
-                kind = kind | Ready::readable();
+                kind |= Ready::readable();
             }
 
             if (epoll & EPOLLPRI) != 0 {
-                kind = kind | Ready::readable() | UnixReady::priority();
+                kind |= Ready::readable() | UnixReady::priority();
             }
 
             if (epoll & EPOLLOUT) != 0 {
-                kind = kind | Ready::writable();
+                kind |= Ready::writable();
             }
 
             // EPOLLHUP - Usually means a socket error happened
             if (epoll & EPOLLERR) != 0 {
-                kind = kind | UnixReady::error();
+                kind |= UnixReady::error();
             }
 
             if (epoll & EPOLLHUP) != 0 {
-                kind = kind | UnixReady::hup();
+                kind |= UnixReady::hup();
             }
 
             let token = self.events[idx].u64;

@@ -37,8 +37,8 @@ use poll::SelectorId;
 /// #
 /// # fn try_main() -> Result<(), Box<Error>> {
 /// #     let _listener = TcpListener::bind("127.0.0.1:34254")?;
-/// use mio::{Events, Ready, Poll, PollOpt, Token};
-/// use mio::net::TcpStream;
+/// use retty_io::{Events, Ready, Poll, PollOpt, Token};
+/// use retty_io::net::TcpStream;
 /// use std::time::Duration;
 ///
 /// let stream = TcpStream::connect(&"127.0.0.1:34254".parse()?)?;
@@ -97,7 +97,7 @@ impl TcpStream {
         // Required on Windows for a future `connect_overlapped` operation to be
         // executed successfully.
         if cfg!(windows) {
-            sock.bind(&inaddr_any(addr))?;
+            sock.bind(inaddr_any(addr))?;
         }
         TcpStream::connect_stream(sock.to_tcp_stream()?, addr)
     }
@@ -474,8 +474,8 @@ impl fmt::Debug for TcpStream {
 /// ```
 /// # use std::error::Error;
 /// # fn try_main() -> Result<(), Box<Error>> {
-/// use mio::{Events, Ready, Poll, PollOpt, Token};
-/// use mio::net::TcpListener;
+/// use retty_io::{Events, Ready, Poll, PollOpt, Token};
+/// use retty_io::net::TcpListener;
 /// use std::time::Duration;
 ///
 /// let listener = TcpListener::bind(&"127.0.0.1:34255".parse()?)?;

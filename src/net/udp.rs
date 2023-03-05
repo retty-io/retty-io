@@ -5,13 +5,12 @@
 //! [portability guidelines] are followed, the behavior should be identical no
 //! matter the target platform.
 //!
-/// [portability guidelines]: ../struct.Poll.html#portability
-
-use {io, sys, Ready, Poll, PollOpt, Token};
 use event::Evented;
 use poll::SelectorId;
 use std::fmt;
 use std::net::{self, Ipv4Addr, Ipv6Addr, SocketAddr};
+/// [portability guidelines]: ../struct.Poll.html#portability
+use {io, sys, Poll, PollOpt, Ready, Token};
 
 #[cfg(all(unix, not(target_os = "fuchsia")))]
 use iovec::IoVec;
@@ -32,8 +31,8 @@ use iovec::IoVec;
 /// // SENDER -> sends a message.
 /// // ECHOER -> listens and prints the message received.
 ///
-/// use mio::net::UdpSocket;
-/// use mio::{Events, Ready, Poll, PollOpt, Token};
+/// use retty_io::net::UdpSocket;
+/// use retty_io::{Events, Ready, Poll, PollOpt, Token};
 /// use std::time::Duration;
 ///
 /// const SENDER: Token = Token(0);
@@ -103,7 +102,7 @@ impl UdpSocket {
     /// # use std::error::Error;
     /// #
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::net::UdpSocket;
+    /// use retty_io::net::UdpSocket;
     ///
     /// // We must bind it to an open address.
     /// let socket = match UdpSocket::bind(&"127.0.0.1:0".parse()?) {
@@ -156,7 +155,7 @@ impl UdpSocket {
     /// # use std::error::Error;
     /// #
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::net::UdpSocket;
+    /// use retty_io::net::UdpSocket;
     ///
     /// let addr = "127.0.0.1:0".parse()?;
     /// let socket = UdpSocket::bind(&addr)?;
@@ -183,7 +182,7 @@ impl UdpSocket {
     /// # use std::error::Error;
     /// #
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::net::UdpSocket;
+    /// use retty_io::net::UdpSocket;
     ///
     /// // We must bind it to an open address.
     /// let socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
@@ -199,13 +198,10 @@ impl UdpSocket {
     /// # }
     /// ```
     pub fn try_clone(&self) -> io::Result<UdpSocket> {
-        self.sys.try_clone()
-            .map(|s| {
-                UdpSocket {
-                    sys: s,
-                    selector_id: self.selector_id.clone(),
-                }
-            })
+        self.sys.try_clone().map(|s| UdpSocket {
+            sys: s,
+            selector_id: self.selector_id.clone(),
+        })
     }
 
     /// Sends data on the socket to the given address. On success, returns the
@@ -219,7 +215,7 @@ impl UdpSocket {
     /// ```no_run
     /// # use std::error::Error;
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::net::UdpSocket;
+    /// use retty_io::net::UdpSocket;
     ///
     /// let socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
     ///
@@ -249,7 +245,7 @@ impl UdpSocket {
     /// # use std::error::Error;
     /// #
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::net::UdpSocket;
+    /// use retty_io::net::UdpSocket;
     ///
     /// let socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
     ///
@@ -301,7 +297,7 @@ impl UdpSocket {
     /// # use std::error::Error;
     /// #
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::net::UdpSocket;
+    /// use retty_io::net::UdpSocket;
     ///
     /// let broadcast_socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
     /// if broadcast_socket.broadcast()? == false {
@@ -334,7 +330,7 @@ impl UdpSocket {
     /// # use std::error::Error;
     /// #
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::net::UdpSocket;
+    /// use retty_io::net::UdpSocket;
     ///
     /// let broadcast_socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
     /// assert_eq!(broadcast_socket.broadcast()?, false);
@@ -418,7 +414,7 @@ impl UdpSocket {
     /// # use std::error::Error;
     /// #
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::net::UdpSocket;
+    /// use retty_io::net::UdpSocket;
     ///
     /// let socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
     /// if socket.ttl()? < 255 {
@@ -450,7 +446,7 @@ impl UdpSocket {
     /// # use std::error::Error;
     /// #
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::net::UdpSocket;
+    /// use retty_io::net::UdpSocket;
     ///
     /// let socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
     /// socket.set_ttl(255)?;
@@ -475,9 +471,7 @@ impl UdpSocket {
     /// address of the local interface with which the system should join the
     /// multicast group. If it's equal to `INADDR_ANY` then an appropriate
     /// interface is chosen by the system.
-    pub fn join_multicast_v4(&self,
-                             multiaddr: &Ipv4Addr,
-                             interface: &Ipv4Addr) -> io::Result<()> {
+    pub fn join_multicast_v4(&self, multiaddr: &Ipv4Addr, interface: &Ipv4Addr) -> io::Result<()> {
         self.sys.join_multicast_v4(multiaddr, interface)
     }
 
@@ -486,9 +480,7 @@ impl UdpSocket {
     /// This function specifies a new multicast group for this socket to join.
     /// The address must be a valid multicast address, and `interface` is the
     /// index of the interface to join/leave (or 0 to indicate any interface).
-    pub fn join_multicast_v6(&self,
-                             multiaddr: &Ipv6Addr,
-                             interface: u32) -> io::Result<()> {
+    pub fn join_multicast_v6(&self, multiaddr: &Ipv6Addr, interface: u32) -> io::Result<()> {
         self.sys.join_multicast_v6(multiaddr, interface)
     }
 
@@ -498,9 +490,7 @@ impl UdpSocket {
     /// [`join_multicast_v4`][link].
     ///
     /// [link]: #method.join_multicast_v4
-    pub fn leave_multicast_v4(&self,
-                              multiaddr: &Ipv4Addr,
-                              interface: &Ipv4Addr) -> io::Result<()> {
+    pub fn leave_multicast_v4(&self, multiaddr: &Ipv4Addr, interface: &Ipv4Addr) -> io::Result<()> {
         self.sys.leave_multicast_v4(multiaddr, interface)
     }
 
@@ -510,9 +500,7 @@ impl UdpSocket {
     /// [`join_multicast_v6`][link].
     ///
     /// [link]: #method.join_multicast_v6
-    pub fn leave_multicast_v6(&self,
-                              multiaddr: &Ipv6Addr,
-                              interface: u32) -> io::Result<()> {
+    pub fn leave_multicast_v6(&self, multiaddr: &Ipv6Addr, interface: u32) -> io::Result<()> {
         self.sys.leave_multicast_v6(multiaddr, interface)
     }
 
@@ -590,12 +578,24 @@ impl UdpSocket {
 }
 
 impl Evented for UdpSocket {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn register(
+        &self,
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()> {
         self.selector_id.associate_selector(poll)?;
         self.sys.register(poll, token, interest, opts)
     }
 
-    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn reregister(
+        &self,
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()> {
         self.sys.reregister(poll, token, interest, opts)
     }
 
@@ -617,7 +617,7 @@ impl fmt::Debug for UdpSocket {
  */
 
 #[cfg(all(unix, not(target_os = "fuchsia")))]
-use std::os::unix::io::{IntoRawFd, AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
 #[cfg(all(unix, not(target_os = "fuchsia")))]
 impl IntoRawFd for UdpSocket {
@@ -642,4 +642,3 @@ impl FromRawFd for UdpSocket {
         }
     }
 }
-

@@ -184,8 +184,8 @@
 * Implement `std::error::Error` for `TimerError`
 * Relax `Send` bound on notify messages.
 * Remove `Clone` impl for `Timeout` (future proof)
-* Remove `mio::prelude`
-* Remove `mio::util`
+* Remove `retty_io::prelude`
+* Remove `retty_io::util`
 * Remove dependency on bytes
 
 # 0.5.0 (December 3, 2015)
@@ -223,5 +223,5 @@
 * [IMPROVEMENT] Rename TryRead & TryWrite function names to avoid conflict with std.
 * [IMPROVEMENT] Provide TCP and UDP types in Mio (path to windows #155)
 * [IMPROVEMENT] Use clock_ticks crate instead of time (path to windows #155)
-* [IMPROVEMENT] Move unix specific features into mio::unix module
+* [IMPROVEMENT] Move unix specific features into retty_io::unix module
 * [IMPROVEMENT] TcpListener sets SO_REUSEADDR by default

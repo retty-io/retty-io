@@ -1,6 +1,6 @@
 use {localhost, TryRead, TryWrite};
-use mio::{Events, Poll, PollOpt, Ready, Token};
-use mio::net::{TcpListener, TcpStream};
+use retty_io::{Events, Poll, PollOpt, Ready, Token};
+use retty_io::net::{TcpListener, TcpStream};
 use bytes::{Buf, ByteBuf, MutByteBuf, SliceBuf};
 use slab::Slab;
 use std::io;

@@ -9,8 +9,8 @@ use std::{
 
 /// Create a pair of the [`Sender`] and the [`Receiver`].
 ///
-/// The [`Receiver`] implements the [`mio::event::Evented`] so that it can be registered
-/// with the [`mio::Poll`], while the [`Sender`] doesn't.
+/// The [`Receiver`] implements the [`retty_io::event::Evented`] so that it can be registered
+/// with the [`retty_io::Poll`], while the [`Sender`] doesn't.
 pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
     let (tx, rx) = crossbeam::channel::unbounded();
 
@@ -32,8 +32,8 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
 
 /// A wrapper of the [`crossbeam::channel::Receiver`].
 ///
-/// It implements the [`mio::event::Evented`] so that it can be registered with the [`mio::Poll`].
-/// It ignores the [`mio::Ready`] and always cause readable events.
+/// It implements the [`retty_io::event::Evented`] so that it can be registered with the [`retty_io::Poll`].
+/// It ignores the [`retty_io::Ready`] and always cause readable events.
 pub struct Receiver<T> {
     waker: Arc<Mutex<HashMap<usize, (Registration, SetReadiness)>>>,
     rx: crossbeam::channel::Receiver<T>,
@@ -123,10 +123,10 @@ pub struct Sender<T> {
 
 impl<T> Sender<T> {
     /// Try to send a value. It works just like [`crossbeam::channel::Sender::send`].
-    /// After sending it, it's waking up the [`mio::Poll`].
+    /// After sending it, it's waking up the [`retty_io::Poll`].
     ///
     /// Note that it does not return any I/O error even if it occurs
-    /// when waking up the [`mio::Poll`].
+    /// when waking up the [`retty_io::Poll`].
     pub fn send(&self, t: T) -> Result<(), crossbeam::channel::SendError<T>> {
         self.tx.send(t)?;
 
@@ -142,8 +142,8 @@ impl<T> Sender<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Events;
     use crossbeam::sync::WaitGroup;
-    use mio::Events;
 
     #[test]
     fn test_channel() -> Result<(), Box<dyn std::error::Error>> {

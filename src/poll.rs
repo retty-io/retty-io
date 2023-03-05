@@ -1,17 +1,17 @@
-use {sys, Token};
-use event_imp::{self as event, Ready, Event, Evented, PollOpt};
-use std::{fmt, io, ptr, usize};
+use event_imp::{self as event, Event, Evented, PollOpt, Ready};
 use std::cell::UnsafeCell;
-use std::{mem, ops, isize};
 #[cfg(all(unix, not(target_os = "fuchsia")))]
 use std::os::unix::io::AsRawFd;
 #[cfg(all(unix, not(target_os = "fuchsia")))]
 use std::os::unix::io::RawFd;
 use std::process;
-use std::sync::{Arc, Mutex, Condvar};
-use std::sync::atomic::{AtomicUsize, AtomicPtr, AtomicBool};
-use std::sync::atomic::Ordering::{self, Acquire, Release, AcqRel, Relaxed, SeqCst};
+use std::sync::atomic::Ordering::{self, AcqRel, Acquire, Relaxed, Release, SeqCst};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
+use std::{fmt, io, ptr, usize};
+use std::{isize, mem, ops};
+use {sys, Token};
 
 // Poll is backed by two readiness queues. The first is a system readiness queue
 // represented by `sys::Selector`. The system readiness queue handles events
@@ -62,7 +62,6 @@ use std::time::{Duration, Instant};
 //
 // [1] http://www.1024cores.net/home/lock-free-algorithms/queues/intrusive-mpsc-node-based-queue
 
-
 /// Polls for readiness events on all registered values.
 ///
 /// `Poll` allows a program to monitor a large number of `Evented` types,
@@ -90,8 +89,8 @@ use std::time::{Duration, Instant};
 /// ```
 /// # use std::error::Error;
 /// # fn try_main() -> Result<(), Box<Error>> {
-/// use mio::{Events, Poll, Ready, PollOpt, Token};
-/// use mio::net::TcpStream;
+/// use retty_io::{Events, Poll, Ready, PollOpt, Token};
+/// use retty_io::net::TcpStream;
 ///
 /// use std::net::{TcpListener, SocketAddr};
 ///
@@ -267,8 +266,8 @@ use std::time::{Duration, Instant};
 /// ```
 /// # use std::error::Error;
 /// # fn try_main() -> Result<(), Box<Error>> {
-/// use mio::{Poll, Ready, PollOpt, Token};
-/// use mio::net::TcpStream;
+/// use retty_io::{Poll, Ready, PollOpt, Token};
+/// use retty_io::net::TcpStream;
 /// use std::time::Duration;
 /// use std::thread;
 ///
@@ -373,8 +372,8 @@ pub struct Poll {
 /// # Examples
 ///
 /// ```
-/// use mio::{Ready, Registration, Poll, PollOpt, Token};
-/// use mio::event::Evented;
+/// use retty_io::{Ready, Registration, Poll, PollOpt, Token};
+/// use retty_io::event::Evented;
 ///
 /// use std::io;
 /// use std::time::Instant;
@@ -627,7 +626,7 @@ impl Poll {
     /// ```
     /// # use std::error::Error;
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::{Poll, Events};
+    /// use retty_io::{Poll, Events};
     /// use std::time::Duration;
     ///
     /// let poll = match Poll::new() {
@@ -662,7 +661,12 @@ impl Poll {
         };
 
         // Register the notification wakeup FD with the IO poller
-        poll.readiness_queue.inner.awakener.register(&poll, AWAKEN, Ready::readable(), PollOpt::edge())?;
+        poll.readiness_queue.inner.awakener.register(
+            &poll,
+            AWAKEN,
+            Ready::readable(),
+            PollOpt::edge(),
+        )?;
 
         Ok(poll)
     }
@@ -735,8 +739,8 @@ impl Poll {
     /// ```
     /// # use std::error::Error;
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::{Events, Poll, Ready, PollOpt, Token};
-    /// use mio::net::TcpStream;
+    /// use retty_io::{Events, Poll, Ready, PollOpt, Token};
+    /// use retty_io::net::TcpStream;
     /// use std::time::{Duration, Instant};
     ///
     /// let poll = Poll::new()?;
@@ -774,8 +778,15 @@ impl Poll {
     /// #     try_main().unwrap();
     /// # }
     /// ```
-    pub fn register<E: ?Sized>(&self, handle: &E, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>
-        where E: Evented
+    pub fn register<E: ?Sized>(
+        &self,
+        handle: &E,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()>
+    where
+        E: Evented,
     {
         validate_args(token)?;
 
@@ -820,8 +831,8 @@ impl Poll {
     /// ```
     /// # use std::error::Error;
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::{Poll, Ready, PollOpt, Token};
-    /// use mio::net::TcpStream;
+    /// use retty_io::{Poll, Ready, PollOpt, Token};
+    /// use retty_io::net::TcpStream;
     ///
     /// let poll = Poll::new()?;
     /// let socket = TcpStream::connect(&"216.58.193.100:80".parse()?)?;
@@ -845,8 +856,15 @@ impl Poll {
     /// [`register`]: #method.register
     /// [`readable`]: struct.Ready.html#method.readable
     /// [`writable`]: struct.Ready.html#method.writable
-    pub fn reregister<E: ?Sized>(&self, handle: &E, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()>
-        where E: Evented
+    pub fn reregister<E: ?Sized>(
+        &self,
+        handle: &E,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()>
+    where
+        E: Evented,
     {
         validate_args(token)?;
 
@@ -877,8 +895,8 @@ impl Poll {
     /// ```
     /// # use std::error::Error;
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::{Events, Poll, Ready, PollOpt, Token};
-    /// use mio::net::TcpStream;
+    /// use retty_io::{Events, Poll, Ready, PollOpt, Token};
+    /// use retty_io::net::TcpStream;
     /// use std::time::Duration;
     ///
     /// let poll = Poll::new()?;
@@ -902,7 +920,8 @@ impl Poll {
     /// # }
     /// ```
     pub fn deregister<E: ?Sized>(&self, handle: &E) -> io::Result<()>
-        where E: Evented
+    where
+        E: Evented,
     {
         trace!("deregistering handle with poller");
 
@@ -958,8 +977,8 @@ impl Poll {
     /// ```
     /// # use std::error::Error;
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::{Events, Poll, Ready, PollOpt, Token};
-    /// use mio::net::TcpStream;
+    /// use retty_io::{Events, Poll, Ready, PollOpt, Token};
+    /// use retty_io::net::TcpStream;
     ///
     /// use std::net::{TcpListener, SocketAddr};
     /// use std::thread;
@@ -1014,11 +1033,20 @@ impl Poll {
     ///
     /// If `poll` is inturrupted while blocking, it will transparently retry the syscall.  If you
     /// want to handle signals yourself, however, use `poll_interruptible`.
-    pub fn poll_interruptible(&self, events: &mut Events, timeout: Option<Duration>) -> io::Result<usize> {
+    pub fn poll_interruptible(
+        &self,
+        events: &mut Events,
+        timeout: Option<Duration>,
+    ) -> io::Result<usize> {
         self.poll1(events, timeout, true)
     }
 
-    fn poll1(&self, events: &mut Events, mut timeout: Option<Duration>, interruptible: bool) -> io::Result<usize> {
+    fn poll1(
+        &self,
+        events: &mut Events,
+        mut timeout: Option<Duration>,
+        interruptible: bool,
+    ) -> io::Result<usize> {
         let zero = Some(Duration::from_millis(0));
 
         // At a high level, the synchronization strategy is to acquire access to
@@ -1124,9 +1152,7 @@ impl Poll {
 
                         l
                     }
-                    None => {
-                        self.condvar.wait(lock).unwrap()
-                    }
+                    None => self.condvar.wait(lock).unwrap(),
                 };
 
                 // Reload the state
@@ -1152,7 +1178,12 @@ impl Poll {
 
     #[inline]
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::if_same_then_else))]
-    fn poll2(&self, events: &mut Events, mut timeout: Option<Duration>, interruptible: bool) -> io::Result<usize> {
+    fn poll2(
+        &self,
+        events: &mut Events,
+        mut timeout: Option<Duration>,
+        interruptible: bool,
+    ) -> io::Result<usize> {
         // Compute the timeout value passed to the system selector. If the
         // readiness queue has pending nodes, we still want to poll the system
         // selector for new events, but we don't want to block the thread to
@@ -1216,8 +1247,7 @@ fn validate_args(token: Token) -> io::Result<()> {
 
 impl fmt::Debug for Poll {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("Poll")
-            .finish()
+        fmt.debug_struct("Poll").finish()
     }
 }
 
@@ -1242,7 +1272,7 @@ impl AsRawFd for Poll {
 /// ```
 /// # use std::error::Error;
 /// # fn try_main() -> Result<(), Box<Error>> {
-/// use mio::{Events, Poll};
+/// use retty_io::{Events, Poll};
 /// use std::time::Duration;
 ///
 /// let mut events = Events::with_capacity(1024);
@@ -1280,7 +1310,7 @@ pub struct Events {
 /// ```
 /// # use std::error::Error;
 /// # fn try_main() -> Result<(), Box<Error>> {
-/// use mio::{Events, Poll};
+/// use retty_io::{Events, Poll};
 /// use std::time::Duration;
 ///
 /// let mut events = Events::with_capacity(1024);
@@ -1318,7 +1348,7 @@ pub struct Iter<'a> {
 /// ```
 /// # use std::error::Error;
 /// # fn try_main() -> Result<(), Box<Error>> {
-/// use mio::{Events, Poll};
+/// use retty_io::{Events, Poll};
 /// use std::time::Duration;
 ///
 /// let mut events = Events::with_capacity(1024);
@@ -1351,7 +1381,7 @@ impl Events {
     /// # Examples
     ///
     /// ```
-    /// use mio::Events;
+    /// use retty_io::Events;
     ///
     /// let events = Events::with_capacity(1024);
     ///
@@ -1363,14 +1393,20 @@ impl Events {
         }
     }
 
-    #[deprecated(since="0.6.10", note="Index access removed in favor of iterator only API.")]
+    #[deprecated(
+        since = "0.6.10",
+        note = "Index access removed in favor of iterator only API."
+    )]
     #[doc(hidden)]
     pub fn get(&self, idx: usize) -> Option<Event> {
         self.inner.get(idx)
     }
 
     #[doc(hidden)]
-    #[deprecated(since="0.6.10", note="Index access removed in favor of iterator only API.")]
+    #[deprecated(
+        since = "0.6.10",
+        note = "Index access removed in favor of iterator only API."
+    )]
     pub fn len(&self) -> usize {
         self.inner.len()
     }
@@ -1378,7 +1414,7 @@ impl Events {
     /// Returns the number of `Event` values that `self` can hold.
     ///
     /// ```
-    /// use mio::Events;
+    /// use retty_io::Events;
     ///
     /// let events = Events::with_capacity(1024);
     ///
@@ -1393,7 +1429,7 @@ impl Events {
     /// # Examples
     ///
     /// ```
-    /// use mio::Events;
+    /// use retty_io::Events;
     ///
     /// let events = Events::with_capacity(1024);
     ///
@@ -1410,7 +1446,7 @@ impl Events {
     /// ```
     /// # use std::error::Error;
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::{Events, Poll};
+    /// use retty_io::{Events, Poll};
     /// use std::time::Duration;
     ///
     /// let mut events = Events::with_capacity(1024);
@@ -1433,7 +1469,7 @@ impl Events {
     pub fn iter(&self) -> Iter {
         Iter {
             inner: self,
-            pos: 0
+            pos: 0,
         }
     }
 
@@ -1444,7 +1480,7 @@ impl Events {
     /// ```
     /// # use std::error::Error;
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::{Events, Poll};
+    /// use retty_io::{Events, Poll};
     /// use std::time::Duration;
     ///
     /// let mut events = Events::with_capacity(1024);
@@ -1534,9 +1570,12 @@ pub fn selector(poll: &Poll) -> &sys::Selector {
 
 // TODO: get rid of this, windows depends on it for now
 #[allow(dead_code)]
-pub fn new_registration(poll: &Poll, token: Token, ready: Ready, opt: PollOpt)
-        -> (Registration, SetReadiness)
-{
+pub fn new_registration(
+    poll: &Poll,
+    token: Token,
+    ready: Ready,
+    opt: PollOpt,
+) -> (Registration, SetReadiness) {
     Registration::new_priv(poll, token, ready, opt)
 }
 
@@ -1552,7 +1591,7 @@ impl Registration {
     /// ```
     /// # use std::error::Error;
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::{Events, Ready, Registration, Poll, PollOpt, Token};
+    /// use retty_io::{Events, Ready, Registration, Poll, PollOpt, Token};
     /// use std::thread;
     ///
     /// let (registration, set_readiness) = Registration::new2();
@@ -1591,18 +1630,19 @@ impl Registration {
         // Allocate the registration node. The new node will have `ref_count`
         // set to 2: one SetReadiness, one Registration.
         let node = Box::into_raw(Box::new(ReadinessNode::new(
-                    ptr::null_mut(), Token(0), Ready::empty(), PollOpt::empty(), 2)));
+            ptr::null_mut(),
+            Token(0),
+            Ready::empty(),
+            PollOpt::empty(),
+            2,
+        )));
 
         let registration = Registration {
-            inner: RegistrationInner {
-                node,
-            },
+            inner: RegistrationInner { node },
         };
 
         let set_readiness = SetReadiness {
-            inner: RegistrationInner {
-                node,
-            },
+            inner: RegistrationInner { node },
         };
 
         (registration, set_readiness)
@@ -1611,16 +1651,22 @@ impl Registration {
     #[deprecated(since = "0.6.5", note = "use `new2` instead")]
     #[cfg(feature = "with-deprecated")]
     #[doc(hidden)]
-    pub fn new(poll: &Poll, token: Token, interest: Ready, opt: PollOpt)
-        -> (Registration, SetReadiness)
-    {
+    pub fn new(
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opt: PollOpt,
+    ) -> (Registration, SetReadiness) {
         Registration::new_priv(poll, token, interest, opt)
     }
 
     // TODO: Get rid of this (windows depends on it for now)
-    fn new_priv(poll: &Poll, token: Token, interest: Ready, opt: PollOpt)
-        -> (Registration, SetReadiness)
-    {
+    fn new_priv(
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opt: PollOpt,
+    ) -> (Registration, SetReadiness) {
         is_send::<Registration>();
         is_sync::<Registration>();
         is_send::<SetReadiness>();
@@ -1634,19 +1680,14 @@ impl Registration {
 
         // Allocate the registration node. The new node will have `ref_count`
         // set to 3: one SetReadiness, one Registration, and one Poll handle.
-        let node = Box::into_raw(Box::new(ReadinessNode::new(
-                    queue, token, interest, opt, 3)));
+        let node = Box::into_raw(Box::new(ReadinessNode::new(queue, token, interest, opt, 3)));
 
         let registration = Registration {
-            inner: RegistrationInner {
-                node,
-            },
+            inner: RegistrationInner { node },
         };
 
         let set_readiness = SetReadiness {
-            inner: RegistrationInner {
-                node,
-            },
+            inner: RegistrationInner { node },
         };
 
         (registration, set_readiness)
@@ -1655,7 +1696,13 @@ impl Registration {
     #[deprecated(since = "0.6.5", note = "use `Evented` impl")]
     #[cfg(feature = "with-deprecated")]
     #[doc(hidden)]
-    pub fn update(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    pub fn update(
+        &self,
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()> {
         self.inner.update(poll, token, interest, opts)
     }
 
@@ -1663,21 +1710,35 @@ impl Registration {
     #[cfg(feature = "with-deprecated")]
     #[doc(hidden)]
     pub fn deregister(&self, poll: &Poll) -> io::Result<()> {
-        self.inner.update(poll, Token(0), Ready::empty(), PollOpt::empty())
+        self.inner
+            .update(poll, Token(0), Ready::empty(), PollOpt::empty())
     }
 }
 
 impl Evented for Registration {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn register(
+        &self,
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()> {
         self.inner.update(poll, token, interest, opts)
     }
 
-    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn reregister(
+        &self,
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()> {
         self.inner.update(poll, token, interest, opts)
     }
 
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
-        self.inner.update(poll, Token(0), Ready::empty(), PollOpt::empty())
+        self.inner
+            .update(poll, Token(0), Ready::empty(), PollOpt::empty())
     }
 }
 
@@ -1695,8 +1756,7 @@ impl Drop for Registration {
 
 impl fmt::Debug for Registration {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("Registration")
-            .finish()
+        fmt.debug_struct("Registration").finish()
     }
 }
 
@@ -1714,7 +1774,7 @@ impl SetReadiness {
     /// ```
     /// # use std::error::Error;
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::{Registration, Ready};
+    /// use retty_io::{Registration, Ready};
     ///
     /// let (registration, set_readiness) = Registration::new2();
     ///
@@ -1754,7 +1814,7 @@ impl SetReadiness {
     /// ```
     /// # use std::error::Error;
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::{Events, Registration, Ready, Poll, PollOpt, Token};
+    /// use retty_io::{Events, Registration, Ready, Poll, PollOpt, Token};
     ///
     /// let poll = Poll::new()?;
     /// let (registration, set_readiness) = Registration::new2();
@@ -1792,7 +1852,7 @@ impl SetReadiness {
     /// ```
     /// # use std::error::Error;
     /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use mio::{Registration, Ready};
+    /// use retty_io::{Registration, Ready};
     ///
     /// let (registration, set_readiness) = Registration::new2();
     ///
@@ -1819,8 +1879,7 @@ impl SetReadiness {
 
 impl fmt::Debug for SetReadiness {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("SetReadiness")
-            .finish()
+        f.debug_struct("SetReadiness").finish()
     }
 }
 
@@ -1882,9 +1941,8 @@ impl RegistrationInner {
         // pointer is being operated on. The actual memory is guaranteed to be
         // visible the `poll: &Poll` ref passed as an argument to the function.
         let mut queue = self.readiness_queue.load(Relaxed);
-        let other: &*mut () = unsafe {
-            &*(&poll.readiness_queue.inner as *const _ as *const *mut ())
-        };
+        let other: &*mut () =
+            unsafe { &*(&poll.readiness_queue.inner as *const _ as *const *mut ()) };
         let other = *other;
 
         debug_assert!(mem::size_of::<Arc<ReadinessQueueInner>>() == mem::size_of::<*mut ()>());
@@ -1892,8 +1950,7 @@ impl RegistrationInner {
         if queue.is_null() {
             // Attempt to set the queue pointer. `Release` ordering synchronizes
             // with `Acquire` in `ensure_with_wakeup`.
-            let actual = self.readiness_queue.compare_and_swap(
-                queue, other, Release);
+            let actual = self.readiness_queue.compare_and_swap(queue, other, Release);
 
             if actual.is_null() {
                 // The CAS succeeded, this means that the node's ref count
@@ -1917,13 +1974,19 @@ impl RegistrationInner {
                 // The CAS failed, another thread set the queue pointer, so ensure
                 // that the pointer and `other` match
                 if actual != other {
-                    return Err(io::Error::new(io::ErrorKind::Other, "registration handle associated with another `Poll` instance"));
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "registration handle associated with another `Poll` instance",
+                    ));
                 }
             }
 
             queue = other;
         } else if queue != other {
-            return Err(io::Error::new(io::ErrorKind::Other, "registration handle associated with another `Poll` instance"));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "registration handle associated with another `Poll` instance",
+            ));
         }
 
         unsafe {
@@ -2071,9 +2134,7 @@ impl Clone for RegistrationInner {
             process::abort();
         }
 
-        RegistrationInner {
-            node: self.node,
-        }
+        RegistrationInner { node: self.node }
     }
 }
 
@@ -2111,7 +2172,7 @@ impl ReadinessQueue {
                 end_marker,
                 sleep_marker,
                 closed_marker,
-            })
+            }),
         })
     }
 
@@ -2129,8 +2190,7 @@ impl ReadinessQueue {
             self.inner.clear_sleep_marker();
         }
 
-        'outer:
-        while dst.len() < dst.capacity() {
+        'outer: while dst.len() < dst.capacity() {
             // Dequeue a node. If the queue is in an inconsistent state, then
             // stop polling. `Poll::poll` will be called again shortly and enter
             // a syscall, which should be enough to enable the other thread to
@@ -2253,10 +2313,15 @@ impl ReadinessQueue {
         // Before inserting a node into the queue, the next pointer has to be
         // set to null. Again, this is only safe to do when the node is not
         // currently in the queue, but we already have ensured this.
-        self.inner.sleep_marker.next_readiness.store(ptr::null_mut(), Relaxed);
+        self.inner
+            .sleep_marker
+            .next_readiness
+            .store(ptr::null_mut(), Relaxed);
 
-        let actual = self.inner.head_readiness.compare_and_swap(
-            end_marker, sleep_marker, AcqRel);
+        let actual = self
+            .inner
+            .head_readiness
+            .compare_and_swap(end_marker, sleep_marker, AcqRel);
 
         debug_assert!(actual != sleep_marker);
 
@@ -2271,7 +2336,9 @@ impl ReadinessQueue {
         debug_assert!(self.inner.end_marker.next_readiness.load(Relaxed).is_null());
 
         // Update tail pointer.
-        unsafe { *self.inner.tail_readiness.get() = sleep_marker; }
+        unsafe {
+            *self.inner.tail_readiness.get() = sleep_marker;
+        }
         true
     }
 }
@@ -2279,7 +2346,7 @@ impl ReadinessQueue {
 impl Drop for ReadinessQueue {
     fn drop(&mut self) {
         // Close the queue by enqueuing the closed node
-        self.inner.enqueue_node(&*self.inner.closed_marker);
+        self.inner.enqueue_node(&self.inner.closed_marker);
 
         loop {
             // Free any nodes that happen to be left in the readiness queue
@@ -2379,10 +2446,13 @@ impl ReadinessQueueInner {
 
             // The empty markeer is *not* currently in the readiness queue
             // (since the sleep markeris).
-            self.end_marker.next_readiness.store(ptr::null_mut(), Relaxed);
+            self.end_marker
+                .next_readiness
+                .store(ptr::null_mut(), Relaxed);
 
-            let actual = self.head_readiness.compare_and_swap(
-                sleep_marker, end_marker, AcqRel);
+            let actual = self
+                .head_readiness
+                .compare_and_swap(sleep_marker, end_marker, AcqRel);
 
             debug_assert!(actual != end_marker);
 
@@ -2404,7 +2474,8 @@ impl ReadinessQueueInner {
         let mut tail = *self.tail_readiness.get();
         let mut next = (*tail).next_readiness.load(Acquire);
 
-        if tail == self.end_marker() || tail == self.sleep_marker() || tail == self.closed_marker() {
+        if tail == self.end_marker() || tail == self.sleep_marker() || tail == self.closed_marker()
+        {
             if next.is_null() {
                 // Make sure the sleep marker is removed (as we are no longer
                 // sleeping
@@ -2439,7 +2510,7 @@ impl ReadinessQueueInner {
         }
 
         // Push the stub node
-        self.enqueue_node(&*self.end_marker);
+        self.enqueue_node(&self.end_marker);
 
         next = (*tail).next_readiness.load(Acquire);
 
@@ -2466,12 +2537,13 @@ impl ReadinessQueueInner {
 
 impl ReadinessNode {
     /// Return a new `ReadinessNode`, initialized with a ref_count of 3.
-    fn new(queue: *mut (),
-           token: Token,
-           interest: Ready,
-           opt: PollOpt,
-           ref_count: usize) -> ReadinessNode
-    {
+    fn new(
+        queue: *mut (),
+        token: Token,
+        interest: Ready,
+        opt: PollOpt,
+        ref_count: usize,
+    ) -> ReadinessNode {
         ReadinessNode {
             state: AtomicState::new(interest, opt),
             // Only the first token is set, the others are initialized to 0
@@ -2513,9 +2585,8 @@ impl ReadinessNode {
 fn enqueue_with_wakeup(queue: *mut (), node: &ReadinessNode) -> io::Result<()> {
     debug_assert!(!queue.is_null());
     // This is ugly... but we don't want to bump the ref count.
-    let queue: &Arc<ReadinessQueueInner> = unsafe {
-        &*(&queue as *const *mut () as *const Arc<ReadinessQueueInner>)
-    };
+    let queue: &Arc<ReadinessQueueInner> =
+        unsafe { &*(&queue as *const *mut () as *const Arc<ReadinessQueueInner>) };
     queue.enqueue_node_with_wakeup(node)
 }
 
@@ -2564,13 +2635,23 @@ impl AtomicState {
     }
 
     /// Stores a state if the current state is the same as `current`.
-    fn compare_and_swap(&self, current: ReadinessState, new: ReadinessState, order: Ordering) -> ReadinessState {
-        self.inner.compare_and_swap(current.into(), new.into(), order).into()
+    fn compare_and_swap(
+        &self,
+        current: ReadinessState,
+        new: ReadinessState,
+        order: Ordering,
+    ) -> ReadinessState {
+        self.inner
+            .compare_and_swap(current.into(), new.into(), order)
+            .into()
     }
 
     // Returns `true` if the node should be queued
     fn flag_as_dropped(&self) -> bool {
-        let prev: ReadinessState = self.inner.fetch_or(DROPPED_MASK | QUEUED_MASK, Release).into();
+        let prev: ReadinessState = self
+            .inner
+            .fetch_or(DROPPED_MASK | QUEUED_MASK, Release)
+            .into();
         // The flag should not have been previously set
         debug_assert!(!prev.is_dropped());
 
@@ -2595,7 +2676,7 @@ impl ReadinessState {
     }
 
     #[inline]
-    fn get(self, mask: usize, shift: usize) -> usize{
+    fn get(self, mask: usize, shift: usize) -> usize {
         (self.0 >> shift) & mask
     }
 
@@ -2693,30 +2774,24 @@ impl ReadinessState {
         let wr = self.token_write_pos();
 
         match wr {
-            0 => {
-                match rd {
-                    1 => 2,
-                    2 => 1,
-                    0 => 1,
-                    _ => unreachable!(),
-                }
-            }
-            1 => {
-                match rd {
-                    0 => 2,
-                    2 => 0,
-                    1 => 2,
-                    _ => unreachable!(),
-                }
-            }
-            2 => {
-                match rd {
-                    0 => 1,
-                    1 => 0,
-                    2 => 0,
-                    _ => unreachable!(),
-                }
-            }
+            0 => match rd {
+                1 => 2,
+                2 => 1,
+                0 => 1,
+                _ => unreachable!(),
+            },
+            1 => match rd {
+                0 => 2,
+                2 => 0,
+                1 => 2,
+                _ => unreachable!(),
+            },
+            2 => match rd {
+                0 => 1,
+                1 => 0,
+                2 => 0,
+                _ => unreachable!(),
+            },
             _ => unreachable!(),
         }
     }
@@ -2759,7 +2834,10 @@ impl SelectorId {
         let selector_id = self.id.load(Ordering::SeqCst);
 
         if selector_id != 0 && selector_id != poll.selector.id() {
-            Err(io::Error::new(io::ErrorKind::Other, "socket already registered"))
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "socket already registered",
+            ))
         } else {
             self.id.store(poll.selector.id(), Ordering::SeqCst);
             Ok(())

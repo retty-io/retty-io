@@ -1,6 +1,6 @@
-use {io, poll, Ready, Poll, PollOpt, Token};
 use event::Evented;
 use std::os::unix::io::RawFd;
+use {io, poll, Poll, PollOpt, Ready, Token};
 
 /*
  *
@@ -31,8 +31,8 @@ use std::os::unix::io::RawFd;
 /// ```
 /// # use std::error::Error;
 /// # fn try_main() -> Result<(), Box<Error>> {
-/// use mio::{Ready, Poll, PollOpt, Token};
-/// use mio::unix::EventedFd;
+/// use retty_io::{Ready, Poll, PollOpt, Token};
+/// use retty_io::unix::EventedFd;
 ///
 /// use std::os::unix::io::AsRawFd;
 /// use std::net::TcpListener;
@@ -56,9 +56,9 @@ use std::os::unix::io::RawFd;
 /// Implementing [`Evented`] for a custom type backed by a [`RawFd`].
 ///
 /// ```
-/// use mio::{Ready, Poll, PollOpt, Token};
-/// use mio::event::Evented;
-/// use mio::unix::EventedFd;
+/// use retty_io::{Ready, Poll, PollOpt, Token};
+/// use retty_io::event::Evented;
+/// use retty_io::unix::EventedFd;
 ///
 /// use std::os::unix::io::RawFd;
 /// use std::io;
@@ -93,11 +93,23 @@ use std::os::unix::io::RawFd;
 pub struct EventedFd<'a>(pub &'a RawFd);
 
 impl<'a> Evented for EventedFd<'a> {
-    fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn register(
+        &self,
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()> {
         poll::selector(poll).register(*self.0, token, interest, opts)
     }
 
-    fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
+    fn reregister(
+        &self,
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()> {
         poll::selector(poll).reregister(*self.0, token, interest, opts)
     }
 

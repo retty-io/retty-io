@@ -13,8 +13,8 @@
 /// ```
 /// # use std::error::Error;
 /// # fn try_main() -> Result<(), Box<Error>> {
-/// use mio::{Events, Ready, Poll, PollOpt, Token};
-/// use mio::net::TcpListener;
+/// use retty_io::{Events, Ready, Poll, PollOpt, Token};
+/// use retty_io::net::TcpListener;
 ///
 /// use std::thread;
 /// use std::io::{self, Read};
