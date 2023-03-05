@@ -1,6 +1,6 @@
 [package]
 name = "retty-io"
-version = "0.0.0"
+version = "0.1.0"
 authors = ["Rusty Rain <y@liu.mx>"]
 edition = "2021"
 description = "A collection of Metal IO (mio) based utilities, like channel, timer, UDP socket with ECN, etc"
