@@ -1,6 +1,7 @@
 use retty_io::event::Event;
 use retty_io::net::UdpSocket;
 use retty_io::{Events, Poll, PollOpt, Ready, Token};
+use std::time::{Duration, Instant};
 use {expect_events, sleep_ms};
 
 #[test]
@@ -79,4 +80,67 @@ pub fn test_udp_level_triggered() {
     );
 
     drop(rx);
+}
+
+#[test]
+pub fn test_ecn() {
+    let socket1 = UdpSocket::bind(&"127.0.0.1:0".parse().unwrap()).unwrap();
+    let socket2 = UdpSocket::bind(&"127.0.0.1:0".parse().unwrap()).unwrap();
+    let addr2 = socket2.local_addr().unwrap();
+
+    let contents = (12324343 as u64).to_be_bytes().to_vec();
+
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    let handle = std::thread::spawn(move || {
+        let mut buffers = vec![0, 0, 0, 0, 0, 0, 0, 0];
+
+        const SOCKET_RD: Token = Token(0);
+        let poll = Poll::new()?;
+        let mut events = Events::with_capacity(2);
+        poll.register(&socket2, SOCKET_RD, Ready::readable(), PollOpt::edge())
+            .unwrap();
+        poll.poll(&mut events, None)?;
+        for event in events.iter() {
+            match event.token() {
+                SOCKET_RD => {
+                    let n = socket2.recv(&mut buffers).unwrap();
+                    println!("received {} {:?}", n, buffers);
+                }
+                _ => unreachable!(),
+            }
+        }
+        println!("sending {:?}", buffers);
+        let _ = tx.send(Some(buffers));
+        println!("sent");
+
+        Ok::<(), std::io::Error>(())
+    });
+
+    let start = Instant::now();
+
+    std::thread::sleep(Duration::from_millis(500));
+
+    const SOCKET_WT: Token = Token(0);
+    let poll = Poll::new().unwrap();
+    let mut events = Events::with_capacity(2);
+    poll.register(&socket1, SOCKET_WT, Ready::writable(), PollOpt::edge())
+        .unwrap();
+    poll.poll(&mut events, None).unwrap();
+    for event in events.iter() {
+        match event.token() {
+            SOCKET_WT => {
+                let n = socket1.send_to(&contents, &addr2).unwrap();
+                println!("sent {} packets in {}ms", n, start.elapsed().as_millis());
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    let _ = handle.join();
+
+    println!("receiving ecn");
+    let ecn = rx.recv().unwrap();
+    println!("receiving {:?}", ecn);
+    assert!(ecn.is_some());
 }
