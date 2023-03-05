@@ -1,0 +1,16 @@
+[package]
+name = "retty-io"
+version = "0.0.0"
+authors = ["Rusty Rain <y@liu.mx>"]
+edition = "2021"
+description = "Metal IO (mio) based Utilities, like Channel, Timer, UDP Socket with ECN, etc"
+license = "MIT/Apache-2.0"
+documentation = "https://docs.rs/retty-io"
+repository = "https://github.com/retty-io/retty-io"
+homepage = "https://retty.io"
+keywords = ["networking", "protocols"]
+categories = [ "network-programming", "asynchronous" ]
+
+[dependencies]
+mio = { version = "0.8.5", features = ["os-poll", "net"] }
+crossbeam = "0.8.2"
