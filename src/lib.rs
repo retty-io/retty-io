@@ -138,13 +138,13 @@ extern crate log;
 
 mod event_imp;
 mod io;
-mod lazycell;
 mod poll;
 mod sys;
 mod token;
 
 pub mod broadcast;
 pub mod channel;
+pub mod lazycell;
 pub mod net;
 pub mod timer;
 

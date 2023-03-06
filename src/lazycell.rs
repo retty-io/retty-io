@@ -11,7 +11,7 @@
 #![deny(missing_docs)]
 #![allow(unused)]
 
-//! This crate provides a `LazyCell` struct which acts as a lazily filled
+//! This module provides a `LazyCell` struct which acts as a lazily filled
 //! `Cell`.
 //!
 //! With a `RefCell`, the inner contents cannot be borrowed for the lifetime of
