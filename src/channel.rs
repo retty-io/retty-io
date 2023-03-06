@@ -2,14 +2,13 @@
 
 #![allow(unused_imports, deprecated, missing_debug_implementations)]
 
-use event::Evented;
+use crate::{Evented, Poll, PollOpt, Ready, Registration, SetReadiness, Token};
 use lazycell::{AtomicLazyCell, LazyCell};
 use std::any::Any;
 use std::error;
-use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc};
-use {io, Poll, PollOpt, Ready, Registration, SetReadiness, Token};
+use std::{fmt, io};
 
 /// Creates a new asynchronous channel, where the `Receiver` can be registered
 /// with `Poll`.
@@ -37,7 +36,7 @@ pub fn sync_channel<T>(bound: usize) -> (SyncSender<T>, Receiver<T>) {
     (tx, rx)
 }
 
-pub fn ctl_pair() -> (SenderCtl, ReceiverCtl) {
+fn ctl_pair() -> (SenderCtl, ReceiverCtl) {
     let inner = Arc::new(Inner {
         pending: AtomicUsize::new(0),
         senders: AtomicUsize::new(1),
@@ -45,7 +44,7 @@ pub fn ctl_pair() -> (SenderCtl, ReceiverCtl) {
     });
 
     let tx = SenderCtl {
-        inner: inner.clone(),
+        inner: Arc::clone(&inner),
     };
 
     let rx = ReceiverCtl {
@@ -57,39 +56,52 @@ pub fn ctl_pair() -> (SenderCtl, ReceiverCtl) {
 }
 
 /// Tracks messages sent on a channel in order to update readiness.
-pub struct SenderCtl {
+struct SenderCtl {
     inner: Arc<Inner>,
 }
 
 /// Tracks messages received on a channel in order to track readiness.
-pub struct ReceiverCtl {
+struct ReceiverCtl {
     registration: LazyCell<Registration>,
     inner: Arc<Inner>,
 }
 
+/// The sending half of a channel.
 pub struct Sender<T> {
     tx: mpsc::Sender<T>,
     ctl: SenderCtl,
 }
 
+/// The sending half of a synchronous channel.
 pub struct SyncSender<T> {
     tx: mpsc::SyncSender<T>,
     ctl: SenderCtl,
 }
 
+/// The receiving half of a channel.
 pub struct Receiver<T> {
     rx: mpsc::Receiver<T>,
     ctl: ReceiverCtl,
 }
 
+/// An error returned from the `Sender::send` or `SyncSender::send` function.
 pub enum SendError<T> {
+    /// An IO error.
     Io(io::Error),
+
+    /// The receiving half of the channel has disconnected.
     Disconnected(T),
 }
 
+/// An error returned from the `SyncSender::try_send` function.
 pub enum TrySendError<T> {
+    /// An IO error.
     Io(io::Error),
+
+    /// Data could not be sent because it would require the callee to block.
     Full(T),
+
+    /// The receiving half of the channel has disconnected.
     Disconnected(T),
 }
 
@@ -103,6 +115,7 @@ struct Inner {
 }
 
 impl<T> Sender<T> {
+    /// Attempts to send a value on this channel, returning it back if it could not be sent.
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
         self.tx.send(t).map_err(SendError::from).and_then(|_| {
             self.ctl.inc()?;
@@ -121,6 +134,10 @@ impl<T> Clone for Sender<T> {
 }
 
 impl<T> SyncSender<T> {
+    /// Sends a value on this synchronous channel.
+    ///
+    /// This function will *block* until space in the internal buffer becomes
+    /// available or a receiver is available to hand off the message to.
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
         self.tx.send(t).map_err(From::from).and_then(|_| {
             self.ctl.inc()?;
@@ -128,6 +145,10 @@ impl<T> SyncSender<T> {
         })
     }
 
+    /// Attempts to send a value on this channel without blocking.
+    ///
+    /// This method differs from `send` by returning immediately if the channel's
+    /// buffer is full or no receiver is waiting to acquire some data.
     pub fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
         self.tx.try_send(t).map_err(From::from).and_then(|_| {
             self.ctl.inc()?;
@@ -146,6 +167,7 @@ impl<T> Clone for SyncSender<T> {
 }
 
 impl<T> Receiver<T> {
+    /// Attempts to return a pending value on this receiver without blocking.
     pub fn try_recv(&self) -> Result<T, mpsc::TryRecvError> {
         self.rx.try_recv().map(|res| {
             let _ = self.ctl.dec();
@@ -188,7 +210,7 @@ impl<T> Evented for Receiver<T> {
 
 impl SenderCtl {
     /// Call to track that a message has been sent
-    pub fn inc(&self) -> io::Result<()> {
+    fn inc(&self) -> io::Result<()> {
         let cnt = self.inner.pending.fetch_add(1, Ordering::Acquire);
 
         if 0 == cnt {
@@ -206,7 +228,7 @@ impl Clone for SenderCtl {
     fn clone(&self) -> SenderCtl {
         self.inner.senders.fetch_add(1, Ordering::Relaxed);
         SenderCtl {
-            inner: self.inner.clone(),
+            inner: Arc::clone(&self.inner),
         }
     }
 }
@@ -220,7 +242,7 @@ impl Drop for SenderCtl {
 }
 
 impl ReceiverCtl {
-    pub fn dec(&self) -> io::Result<()> {
+    fn dec(&self) -> io::Result<()> {
         let first = self.inner.pending.load(Ordering::Acquire);
 
         if first == 1 {
@@ -260,7 +282,8 @@ impl Evented for ReceiverCtl {
             ));
         }
 
-        let (registration, set_readiness) = Registration::new(poll, token, interest, opts);
+        let (registration, set_readiness) = Registration::new2();
+        poll.register(&registration, token, interest, opts)?;
 
         if self.inner.pending.load(Ordering::Relaxed) > 0 {
             // TODO: Don't drop readiness
@@ -286,7 +309,7 @@ impl Evented for ReceiverCtl {
         opts: PollOpt,
     ) -> io::Result<()> {
         match self.registration.borrow() {
-            Some(registration) => registration.update(poll, token, interest, opts),
+            Some(registration) => poll.reregister(registration, token, interest, opts),
             None => Err(io::Error::new(
                 io::ErrorKind::Other,
                 "receiver not registered",
@@ -296,7 +319,7 @@ impl Evented for ReceiverCtl {
 
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
         match self.registration.borrow() {
-            Some(registration) => registration.deregister(poll),
+            Some(registration) => poll.deregister(registration),
             None => Err(io::Error::new(
                 io::ErrorKind::Other,
                 "receiver not registered",
@@ -350,24 +373,9 @@ impl<T> From<io::Error> for TrySendError<T> {
  *
  */
 
-impl<T: Any> error::Error for SendError<T> {
-    fn description(&self) -> &str {
-        match *self {
-            SendError::Io(ref io_err) => io_err.description(),
-            SendError::Disconnected(..) => "Disconnected",
-        }
-    }
-}
+impl<T: Any> error::Error for SendError<T> {}
 
-impl<T: Any> error::Error for TrySendError<T> {
-    fn description(&self) -> &str {
-        match *self {
-            TrySendError::Io(ref io_err) => io_err.description(),
-            TrySendError::Full(..) => "Full",
-            TrySendError::Disconnected(..) => "Disconnected",
-        }
-    }
-}
+impl<T: Any> error::Error for TrySendError<T> {}
 
 impl<T> fmt::Debug for SendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
