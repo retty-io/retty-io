@@ -166,11 +166,6 @@ pub mod tcp {
     pub use std::net::Shutdown;
 }
 
-#[deprecated(since = "0.6.6", note = "use net module instead")]
-#[cfg(feature = "with-deprecated")]
-#[doc(hidden)]
-pub mod udp;
-
 pub use event_imp::{PollOpt, Ready};
 pub use poll::{Poll, Registration, SetReadiness};
 pub use token::Token;
