@@ -171,7 +171,7 @@ impl<H: Handler> EventLoop<H> {
     ///
     /// Returns a handle to the timeout that can be used to cancel the timeout
     /// using [#clear_timeout](#method.clear_timeout).
-    pub fn timeout(&mut self, token: H::Timeout, delay: Duration) -> timer::Result<Timeout> {
+    pub fn timeout(&mut self, token: H::Timeout, delay: Duration) -> Timeout {
         self.timer.set_timeout(delay, token)
     }
 
