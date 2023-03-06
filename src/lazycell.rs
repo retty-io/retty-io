@@ -11,8 +11,7 @@
 #![deny(missing_docs)]
 #![allow(unused)]
 
-//! This module provides a `LazyCell` struct which acts as a lazily filled
-//! `Cell`.
+//! Lazily filled `Cell`.
 //!
 //! With a `RefCell`, the inner contents cannot be borrowed for the lifetime of
 //! the entire object, but only of the borrows returned. A `LazyCell` is a

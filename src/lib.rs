@@ -1,4 +1,4 @@
-// Mio targets old versions of the Rust compiler. In order to do this, uses
+// retty-io targets old versions of the Rust compiler. In order to do this, uses
 // deprecated APIs.
 #![allow(
     bare_trait_objects,
@@ -19,17 +19,17 @@
 //! # Features
 //!
 //! * Non-blocking TCP, UDP
+//! * Timer, Channel, Broadcast
 //! * I/O event notification queue backed by epoll, kqueue, and IOCP
 //! * Zero allocations at runtime
 //! * Platform specific extensions
 //!
 //! # Non-goals
 //!
-//! The following are specifically omitted from Mio and are left to the user or higher-level libraries.
+//! The following are specifically omitted from retty-io and are left to the user or higher-level libraries.
 //!
 //! * File operations
 //! * Thread pools / multi-threaded event loop
-//! * Timers
 //!
 //! # Platforms
 //!
@@ -216,8 +216,8 @@ pub mod fuchsia {
 
 /// Windows-only extensions to the mio crate.
 ///
-/// Mio on windows is currently implemented with IOCP for a high-performance
-/// implementation of asynchronous I/O. Mio then provides TCP and UDP as sample
+/// retty-io on windows is currently implemented with IOCP for a high-performance
+/// implementation of asynchronous I/O. retty-io then provides TCP and UDP as sample
 /// bindings for the system to connect networking types to asynchronous I/O. On
 /// Unix this scheme is then also extensible to all other file descriptors with
 /// the `EventedFd` type, but on Windows no such analog is available. The
@@ -250,7 +250,7 @@ pub mod fuchsia {
 ///   safety, that all asynchronous operations are initiated with an instance of
 ///   `Overlapped` and not another instantiation of `OVERLAPPED`.
 ///
-///   Mio's `Overlapped` type is created with a function pointer that receives
+///   retty-io's `Overlapped` type is created with a function pointer that receives
 ///   a `OVERLAPPED_ENTRY` type when called. This `OVERLAPPED_ENTRY` type is
 ///   defined in the `winapi` crate. Whenever a completion is posted to an IOCP
 ///   object the `OVERLAPPED` that was signaled will be interpreted as

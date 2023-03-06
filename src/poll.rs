@@ -309,7 +309,7 @@ use {sys, Token};
 /// On all platforms except windows, a call to [`Poll::poll`] is mostly just a
 /// direct call to the system selector. However, [IOCP] uses a completion model
 /// instead of a readiness model. In this case, `Poll` must adapt the completion
-/// model Mio's API. While non-trivial, the bridge layer is still quite
+/// model retty-io's API. While non-trivial, the bridge layer is still quite
 /// efficient. The most expensive part being calls to `read` and `write` require
 /// data to be copied into an intermediate buffer before it is passed to the
 /// kernel.
@@ -1997,7 +1997,7 @@ impl RegistrationInner {
         // The `update_lock` atomic is used as a flag ensuring only a single
         // thread concurrently enters the `update` critical section. Any
         // concurrent calls to update are discarded. If coordinated updates are
-        // required, the Mio user is responsible for handling that.
+        // required, the retty-io user is responsible for handling that.
         //
         // Acquire / Release ordering is used on `update_lock` to ensure that
         // data access to the `token_*` variables are scoped to the critical

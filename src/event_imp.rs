@@ -3,7 +3,7 @@ use {Poll, Token};
 
 /// A value that may be registered with `Poll`
 ///
-/// Values that implement `Evented` can be registered with `Poll`. Users of Mio
+/// Values that implement `Evented` can be registered with `Poll`. Users of retty-io
 /// should not use the `Evented` trait functions directly. Instead, the
 /// equivalent functions on `Poll` should be used.
 ///
@@ -934,7 +934,7 @@ impl Ready {
     /// The `usize` representation must be treated as opaque. There is no
     /// guaranteed correlation between the returned value and platform defined
     /// constants. Also, there is no guarantee that the `usize` representation
-    /// will remain constant across patch releases of Mio.
+    /// will remain constant across patch releases of retty-io.
     ///
     /// This function is mainly provided to allow the caller to loa a
     /// readiness value from an `AtomicUsize`.
@@ -959,7 +959,7 @@ impl Ready {
     /// This `usize` representation must be treated as opaque. There is no
     /// guaranteed correlation between the returned value and platform defined
     /// constants. Also, there is no guarantee that the `usize` representation
-    /// will remain constant across patch releases of Mio.
+    /// will remain constant across patch releases of retty-io.
     ///
     /// This function is mainly provided to allow the caller to store a
     /// readiness value in an `AtomicUsize`.
@@ -1183,7 +1183,7 @@ impl Event {
 
 /*
  *
- * ===== Mio internal helpers =====
+ * ===== retty-io internal helpers =====
  *
  */
 
