@@ -2064,7 +2064,7 @@ impl RegistrationInner {
             // for processing. This exact behavior is still TBD, so we are
             // conservative for now and always fire.
             //
-            // See https://github.com/carllerche/mio/issues/535.
+            // See https://github.com/carllerche/retty-io/issues/535.
             if !next.effective_readiness().is_empty() {
                 next.set_queued();
             }

@@ -84,7 +84,7 @@ impl TcpStream {
     /// options when creating a socket which is then connected. If fine-grained
     /// control over the creation of the socket is desired, you can use
     /// `net2::TcpBuilder` to configure a socket and then pass its socket to
-    /// `TcpStream::connect_stream` to transfer ownership into mio and schedule
+    /// `TcpStream::connect_stream` to transfer ownership into retty-io and schedule
     /// the connect operation.
     pub fn connect(addr: &SocketAddr) -> io::Result<TcpStream> {
         let sock = match *addr {
@@ -127,7 +127,7 @@ impl TcpStream {
     /// Creates a new `TcpStream` from a standard `net::TcpStream`.
     ///
     /// This function is intended to be used to wrap a TCP stream from the
-    /// standard library in the mio equivalent. The conversion here will
+    /// standard library in the retty-io equivalent. The conversion here will
     /// automatically set `stream` to nonblocking and the returned object should
     /// be ready to get associated with an event loop.
     ///
@@ -515,7 +515,7 @@ impl TcpListener {
     /// If fine-grained control over the binding and listening process for a
     /// socket is desired then the `net2::TcpBuilder` methods can be used in
     /// combination with the `TcpListener::from_listener` method to transfer
-    /// ownership into mio.
+    /// ownership into retty-io.
     pub fn bind(addr: &SocketAddr) -> io::Result<TcpListener> {
         // Create the socket
         let sock = match *addr {
@@ -550,7 +550,7 @@ impl TcpListener {
     /// `std::net::TcpListener` type.
     ///
     /// This function will set the `listener` provided into nonblocking mode on
-    /// Unix, and otherwise the stream will just be wrapped up in an mio stream
+    /// Unix, and otherwise the stream will just be wrapped up in an retty-io stream
     /// ready to accept new connections and become associated with an event
     /// loop.
     ///
@@ -579,8 +579,8 @@ impl TcpListener {
     /// Accepts a new `std::net::TcpStream`.
     ///
     /// This method is the same as `accept`, except that it returns a TCP socket
-    /// *in blocking mode* which isn't bound to `mio`. This can be later then
-    /// converted to a `mio` type, if necessary.
+    /// *in blocking mode* which isn't bound to `retty-io`. This can be later then
+    /// converted to a `retty-io` type, if necessary.
     pub fn accept_std(&self) -> io::Result<(net::TcpStream, SocketAddr)> {
         self.sys.accept()
     }

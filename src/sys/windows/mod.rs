@@ -1,6 +1,6 @@
-//! Implementation of mio for Windows using IOCP
+//! Implementation of retty-io for Windows using IOCP
 //!
-//! This module uses I/O Completion Ports (IOCP) on Windows to implement mio's
+//! This module uses I/O Completion Ports (IOCP) on Windows to implement retty-io's
 //! Unix epoll-like interface. Unfortunately these two I/O models are
 //! fundamentally incompatible:
 //!
@@ -10,7 +10,7 @@
 //!   work can be done, and afterwards the work is done.
 //!
 //! As a result, this implementation for Windows is much less "low level" than
-//! the Unix implementation of mio. This design decision was intentional,
+//! the Unix implementation of retty-io. This design decision was intentional,
 //! however.
 //!
 //! ## What is IOCP?

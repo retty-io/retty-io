@@ -246,7 +246,7 @@ impl UnixReady {
     ///
     /// [`Poll`]: ../struct.Poll.html
     /// [readiness]: ../struct.Poll.html#readiness-operations
-    /// [issue-941]: https://github.com/tokio-rs/mio/issues/941
+    /// [issue-941]: https://github.com/tokio-rs/retty-io/issues/941
     #[inline]
     pub fn hup() -> UnixReady {
         UnixReady(ready_from_usize(HUP))

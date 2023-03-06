@@ -2,18 +2,18 @@ use std::sync::Mutex;
 use zircon_sys::zx_handle_t;
 use {io, poll, Evented, Poll, PollOpt, Ready, Token};
 
-/// Wrapper for registering a `HandleBase` type with mio.
+/// Wrapper for registering a `HandleBase` type with retty-io.
 #[derive(Debug)]
 pub struct EventedHandle {
     /// The handle to be registered.
     handle: zx_handle_t,
 
-    /// The current `Token` with which the handle is registered with mio.
+    /// The current `Token` with which the handle is registered with retty-io.
     token: Mutex<Option<Token>>,
 }
 
 impl EventedHandle {
-    /// Create a new `EventedHandle` which can be registered with mio
+    /// Create a new `EventedHandle` which can be registered with retty-io
     /// in order to receive event notifications.
     ///
     /// The underlying handle must not be dropped while the

@@ -2,10 +2,10 @@ use event_imp::{ready_as_usize, ready_from_usize, Ready};
 use std::ops;
 pub use zircon_sys::{zx_signals_t, ZX_OBJECT_READABLE, ZX_OBJECT_WRITABLE};
 
-// The following impls are valid because Fuchsia and mio both represent
+// The following impls are valid because Fuchsia and retty-io both represent
 // "readable" as `1 << 0` and "writable" as `1 << 2`.
 // We define this assertion here and call it from `Selector::new`,
-// since `Selector:;new` is guaranteed to be called during a standard mio runtime,
+// since `Selector:;new` is guaranteed to be called during a standard retty-io runtime,
 // unlike the functions in this file.
 #[inline]
 pub fn assert_fuchsia_ready_repr() {

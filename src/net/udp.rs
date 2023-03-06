@@ -126,15 +126,15 @@ impl UdpSocket {
         UdpSocket::from_socket(socket)
     }
 
-    /// Creates a new mio-wrapped socket from an underlying and bound std
+    /// Creates a new retty-io-wrapped socket from an underlying and bound std
     /// socket.
     ///
     /// This function requires that `socket` has previously been bound to an
     /// address to work correctly, and returns an I/O object which can be used
-    /// with mio to send/receive UDP messages.
+    /// with retty-io to send/receive UDP messages.
     ///
     /// This can be used in conjunction with net2's `UdpBuilder` interface to
-    /// configure a socket before it's handed off to mio, such as setting
+    /// configure a socket before it's handed off to retty-io, such as setting
     /// options like `reuse_address` or binding to multiple addresses.
     pub fn from_socket(socket: net::UdpSocket) -> io::Result<UdpSocket> {
         Ok(UdpSocket {
@@ -148,7 +148,7 @@ impl UdpSocket {
     /// # Examples
     ///
     // This assertion is almost, but not quite, universal.  It fails on
-    // shared-IP FreeBSD jails.  It's hard for mio to know whether we're jailed,
+    // shared-IP FreeBSD jails.  It's hard for retty-io to know whether we're jailed,
     // so simply disable the test on FreeBSD.
     #[cfg_attr(not(target_os = "freebsd"), doc = " ```")]
     #[cfg_attr(target_os = "freebsd", doc = " ```no_run")]

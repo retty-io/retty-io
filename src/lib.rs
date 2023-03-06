@@ -8,7 +8,7 @@
 )]
 //#![deny(missing_docs, missing_debug_implementations)]
 //#![cfg_attr(test, deny(warnings))]
-// Many of mio's public methods violate this lint, but they can't be fixed
+// Many of retty-io's public methods violate this lint, but they can't be fixed
 // without a breaking change.
 #![cfg_attr(feature = "cargo-clippy", allow(clippy::trivially_copy_pass_by_ref))]
 
@@ -43,12 +43,12 @@
 //! * Android
 //! * iOS
 //!
-//! mio can handle interfacing with each of the event notification systems of the aforementioned platforms. The details of
+//! retty-io can handle interfacing with each of the event notification systems of the aforementioned platforms. The details of
 //! their implementation are further discussed in [`Poll`].
 //!
 //! # Usage
 //!
-//! Using mio starts by creating a [`Poll`], which reads events from the OS and
+//! Using retty-io starts by creating a [`Poll`], which reads events from the OS and
 //! put them into [`Events`]. You can handle IO events from the OS with it.
 //!
 //! For more detail, see [`Poll`].
@@ -214,7 +214,7 @@ pub mod fuchsia {
     pub use sys::EventedHandle;
 }
 
-/// Windows-only extensions to the mio crate.
+/// Windows-only extensions to the retty-io crate.
 ///
 /// retty-io on windows is currently implemented with IOCP for a high-performance
 /// implementation of asynchronous I/O. retty-io then provides TCP and UDP as sample
@@ -226,7 +226,7 @@ pub mod fuchsia {
 ///
 /// This module provides two types for interfacing with a custom IOCP handle:
 ///
-/// * `Binding` - this type is intended to govern binding with mio's `Poll`
+/// * `Binding` - this type is intended to govern binding with retty-io's `Poll`
 ///   type. Each I/O object should contain an instance of `Binding` that's
 ///   interfaced with for the implementation of the `Evented` trait. The
 ///   `register`, `reregister`, and `deregister` methods for the `Evented` trait
@@ -239,11 +239,11 @@ pub mod fuchsia {
 ///   the first time that `Evented::register` is called and then stored in the
 ///   I/O object.
 ///
-///   Also note that for types which represent streams of bytes the mio
+///   Also note that for types which represent streams of bytes the retty-io
 ///   interface of *readiness* doesn't map directly to the Windows model of
 ///   *completion*. This means that types will have to perform internal
 ///   buffering to ensure that a readiness interface can be provided. For a
-///   sample implementation see the TCP/UDP modules in mio itself.
+///   sample implementation see the TCP/UDP modules in retty-io itself.
 ///
 /// * `Overlapped` - this type is intended to be used as the concrete instances
 ///   of the `OVERLAPPED` type that most win32 methods expect. It's crucial, for
@@ -254,16 +254,16 @@ pub mod fuchsia {
 ///   a `OVERLAPPED_ENTRY` type when called. This `OVERLAPPED_ENTRY` type is
 ///   defined in the `winapi` crate. Whenever a completion is posted to an IOCP
 ///   object the `OVERLAPPED` that was signaled will be interpreted as
-///   `Overlapped` in the mio crate and this function pointer will be invoked.
+///   `Overlapped` in the retty-io crate and this function pointer will be invoked.
 ///   Through this function pointer, and through the `OVERLAPPED` pointer,
 ///   implementations can handle management of I/O events.
 ///
 /// When put together these two types enable custom Windows handles to be
-/// registered with mio's event loops. The `Binding` type is used to associate
+/// registered with retty-io's event loops. The `Binding` type is used to associate
 /// handles and the `Overlapped` type is used to execute I/O operations. When
 /// the I/O operations are completed a custom function pointer is called which
 /// typically modifies a `SetReadiness` set by `Evented` methods which will get
-/// later hooked into the mio event loop.
+/// later hooked into the retty-io event loop.
 #[cfg(windows)]
 pub mod windows {
 

@@ -512,7 +512,7 @@ impl Overlapped {
     /// whenever it's triggered.
     ///
     /// The returned `Overlapped` must be used as the `OVERLAPPED` passed to all
-    /// I/O operations that are registered with mio's event loop. When the I/O
+    /// I/O operations that are registered with retty-io's event loop. When the I/O
     /// operation associated with an `OVERLAPPED` pointer completes the event
     /// loop will invoke the function pointer provided by `cb`.
     pub fn new(cb: fn(&OVERLAPPED_ENTRY)) -> Overlapped {

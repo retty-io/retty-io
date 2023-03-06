@@ -49,7 +49,7 @@ mod sys {
     use std::os::unix::io::RawFd;
     pub use zircon_sys::{zx_handle_t, zx_signals_t};
 
-    // 17 fn pointers we don't need for mio :)
+    // 17 fn pointers we don't need for retty-io :)
     pub type fdio_ops_t = [usize; 17];
 
     pub type atomic_int_fast32_t = usize; // TODO: https://github.com/rust-lang/libc/issues/631

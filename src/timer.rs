@@ -14,7 +14,7 @@ use std::{cmp, fmt, io, iter, thread, u64, usize};
 ///
 /// Typical usage goes like this:
 ///
-/// * register the timer with a `mio::Poll`.
+/// * register the timer with a `Poll`.
 /// * set a timeout, by calling `Timer::set_timeout`.  Here you provide some
 ///   state to be associated with this timeout.
 /// * poll the `Poll`, to learn when a timeout has occurred.

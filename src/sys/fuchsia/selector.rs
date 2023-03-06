@@ -277,7 +277,7 @@ impl Selector {
         self.token_to_fd.lock().unwrap().remove(&token);
 
         // We ignore NotFound errors since oneshots are automatically deregistered,
-        // but mio will attempt to deregister them manually.
+        // but retty-io will attempt to deregister them manually.
         self.port
             .cancel(&*handle, token.0 as u64)
             .map_err(io::Error::from)
