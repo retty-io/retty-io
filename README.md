@@ -20,5 +20,5 @@
  </a>
 </p>
 <p align="center">
- <a href="https://retty.io">retty-io</a> is a collection of Metal IO (mio) based utilities, like channel, timer, UDP socket with ECN, etc.
+ <a href="https://retty.io">retty-io</a> is a collection of metal IO library with non-blocking TCP, UDP, broadcast, channel and timer, etc.
 </p>

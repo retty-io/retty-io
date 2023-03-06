@@ -1,8 +1,8 @@
 [package]
 name = "retty-io"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Rusty Rain <y@liu.mx>"]
-description = "A collection of Metal IO (mio) based utilities, like channel, timer, UDP socket with ECN, etc"
+description = "A collection of metal IO library with non-blocking TCP, UDP, broadcast, channel and timer, etc"
 license = "MIT/Apache-2.0"
 documentation = "https://docs.rs/retty-io"
 repository = "https://github.com/retty-io/retty-io"
