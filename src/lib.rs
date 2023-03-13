@@ -1,293 +1,287 @@
-// retty-io targets old versions of the Rust compiler. In order to do this, uses
-// deprecated APIs.
-#![allow(
-    bare_trait_objects,
-    deprecated,
-    unknown_lints,
-    unstable_name_collisions
-)]
-//#![deny(missing_docs, missing_debug_implementations)]
-//#![cfg_attr(test, deny(warnings))]
-// Many of retty-io's public methods violate this lint, but they can't be fixed
-// without a breaking change.
-#![cfg_attr(feature = "cargo-clippy", allow(clippy::trivially_copy_pass_by_ref))]
-
-//! A fast, low-level IO library for Rust focusing on non-blocking APIs, event
-//! notification, and other useful utilities for building high performance IO
-//! apps.
+//! retty-io provides a safe [io-uring] interface for the Tokio runtime. The
+//! library requires Linux kernel 5.10 or later.
 //!
-//! # Features
+//! [io-uring]: https://kernel.dk/io_uring.pdf
 //!
-//! * Non-blocking TCP, UDP
-//! * Timer, Channel, Broadcast
-//! * I/O event notification queue backed by epoll, kqueue, and IOCP
-//! * Zero allocations at runtime
-//! * Platform specific extensions
+//! # Getting started
 //!
-//! # Non-goals
+//! Using `retty-io` requires starting a [`retty-io`] runtime. This
+//! runtime internally manages the main Tokio runtime and a `io-uring` driver.
 //!
-//! The following are specifically omitted from retty-io and are left to the user or higher-level libraries.
+//! ```no_run
+//! use retty_io::fs::File;
 //!
-//! * File operations
-//! * Thread pools / multi-threaded event loop
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     retty_io::start(async {
+//!         // Open a file
+//!         let file = File::open("hello.txt").await?;
 //!
-//! # Platforms
+//!         let buf = vec![0; 4096];
+//!         // Read some data, the buffer is passed by ownership and
+//!         // submitted to the kernel. When the operation completes,
+//!         // we get the buffer back.
+//!         let (res, buf) = file.read_at(buf, 0).await;
+//!         let n = res?;
 //!
-//! Currently supported platforms:
+//!         // Display the contents
+//!         println!("{:?}", &buf[..n]);
 //!
-//! * Linux
-//! * OS X
-//! * Windows
-//! * FreeBSD
-//! * NetBSD
-//! * Android
-//! * iOS
-//!
-//! retty-io can handle interfacing with each of the event notification systems of the aforementioned platforms. The details of
-//! their implementation are further discussed in [`Poll`].
-//!
-//! # Usage
-//!
-//! Using retty-io starts by creating a [`Poll`], which reads events from the OS and
-//! put them into [`Events`]. You can handle IO events from the OS with it.
-//!
-//! For more detail, see [`Poll`].
-//!
-//! [`Poll`]: struct.Poll.html
-//! [`Events`]: struct.Events.html
-//!
-//! # Example
-//!
-//! ```
-//! use retty_io::*;
-//! use retty_io::net::{TcpListener, TcpStream};
-//!
-//! // Setup some tokens to allow us to identify which event is
-//! // for which socket.
-//! const SERVER: Token = Token(0);
-//! const CLIENT: Token = Token(1);
-//!
-//! let addr = "127.0.0.1:13265".parse().unwrap();
-//!
-//! // Setup the server socket
-//! let server = TcpListener::bind(&addr).unwrap();
-//!
-//! // Create a poll instance
-//! let poll = Poll::new().unwrap();
-//!
-//! // Start listening for incoming connections
-//! poll.register(&server, SERVER, Ready::readable(),
-//!               PollOpt::edge()).unwrap();
-//!
-//! // Setup the client socket
-//! let sock = TcpStream::connect(&addr).unwrap();
-//!
-//! // Register the socket
-//! poll.register(&sock, CLIENT, Ready::readable(),
-//!               PollOpt::edge()).unwrap();
-//!
-//! // Create storage for events
-//! let mut events = Events::with_capacity(1024);
-//!
-//! loop {
-//!     poll.poll(&mut events, None).unwrap();
-//!
-//!     for event in events.iter() {
-//!         match event.token() {
-//!             SERVER => {
-//!                 // Accept and drop the socket immediately, this will close
-//!                 // the socket and notify the client of the EOF.
-//!                 let _ = server.accept();
-//!             }
-//!             CLIENT => {
-//!                 // The server just shuts down the socket, let's just exit
-//!                 // from our event loop.
-//!                 return;
-//!             }
-//!             _ => unreachable!(),
-//!         }
-//!     }
+//!         Ok(())
+//!     })
 //! }
-//!
 //! ```
+//!
+//! Under the hood, `retty_io::start` starts a [`current-thread`] Runtime.
+//! For concurrency, spawn multiple threads, each with a `retty-io` runtime.
+//! The `retty-io` resource types are optimized for single-threaded usage and
+//! most are `!Sync`.
+//!
+//! # Submit-based operations
+//!
+//! Unlike Tokio proper, `io-uring` is based on submission based operations.
+//! Ownership of resources are passed to the kernel, which then performs the
+//! operation. When the operation completes, ownership is passed back to the
+//! caller. Because of this difference, the `retty-io` APIs diverge.
+//!
+//! For example, in the above example, reading from a `File` requires passing
+//! ownership of the buffer.
+//!
+//! # Closing resources
+//!
+//! With `io-uring`, closing a resource (e.g. a file) is an asynchronous
+//! operation. Because Rust does not support asynchronous drop yet, resource
+//! types provide an explicit `close()` function. If the `close()` function is
+//! not called, the resource will still be closed on drop, but the operation
+//! will happen in the background. There is no guarantee as to **when** the
+//! implicit close-on-drop operation happens, so it is recommended to explicitly
+//! call `close()`.
 
-extern crate crossbeam;
-extern crate iovec;
-extern crate net2;
-extern crate slab;
+#![warn(missing_docs)]
 
-#[cfg(target_os = "fuchsia")]
-extern crate fuchsia_zircon as zircon;
-#[cfg(target_os = "fuchsia")]
-extern crate fuchsia_zircon_sys as zircon_sys;
-
-#[cfg(unix)]
-extern crate libc;
-
-#[cfg(windows)]
-extern crate miow;
-
-#[cfg(windows)]
-extern crate winapi;
-
-#[cfg(windows)]
-extern crate kernel32;
+macro_rules! syscall {
+    ($fn: ident ( $($arg: expr),* $(,)* ) ) => {{
+        let res = unsafe { libc::$fn($($arg, )*) };
+        if res == -1 {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(res)
+        }
+    }};
+}
 
 #[macro_use]
-extern crate log;
-
-mod event_imp;
+mod future;
 mod io;
-mod poll;
-mod sys;
-mod token;
+mod runtime;
 
-pub mod broadcast;
-pub mod channel;
-pub mod lazycell;
+pub mod buf;
+pub mod fs;
 pub mod net;
-pub mod timer;
 
-#[deprecated(since = "0.6.5", note = "update to use `Poll`")]
-#[cfg(feature = "with-deprecated")]
-#[doc(hidden)]
-pub mod deprecated;
+pub use io::write::*;
+pub use runtime::driver::op::{InFlightOneshot, OneshotOutputTransform, UnsubmittedOneshot};
+pub use runtime::spawn;
+pub use runtime::Runtime;
 
-#[deprecated(since = "0.6.5", note = "use iovec crate directly")]
-#[cfg(feature = "with-deprecated")]
-#[doc(hidden)]
-pub use iovec::IoVec;
+use crate::runtime::driver::op::Op;
+use std::future::Future;
 
-#[deprecated(since = "0.6.6", note = "use net module instead")]
-#[cfg(feature = "with-deprecated")]
-#[doc(hidden)]
-pub mod tcp {
-    pub use net::{TcpListener, TcpStream};
-    pub use std::net::Shutdown;
+/// Starts an `io_uring` enabled Tokio runtime.
+///
+/// All `retty-io` resource types must be used from within the context of a
+/// runtime. The `start` method initializes the runtime and runs it for the
+/// duration of `future`.
+///
+/// The `retty-io` runtime is compatible with all Tokio, so it is possible to
+/// run Tokio based libraries (e.g. hyper) from within the retty-io runtime.
+/// A `retty-io` runtime consists of a Tokio `current_thread` runtime and an
+/// `io-uring` driver. All tasks spawned on the `retty-io` runtime are
+/// executed on the current thread. To add concurrency, spawn multiple threads,
+/// each with a `retty-io` runtime.
+///
+/// # Examples
+///
+/// Basic usage
+///
+/// ```no_run
+/// use retty_io::fs::File;
+///
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     retty_io::start(async {
+///         // Open a file
+///         let file = File::open("hello.txt").await?;
+///
+///         let buf = vec![0; 4096];
+///         // Read some data, the buffer is passed by ownership and
+///         // submitted to the kernel. When the operation completes,
+///         // we get the buffer back.
+///         let (res, buf) = file.read_at(buf, 0).await;
+///         let n = res?;
+///
+///         // Display the contents
+///         println!("{:?}", &buf[..n]);
+///
+///         Ok(())
+///     })
+/// }
+/// ```
+///
+/// Using Tokio types from the `retty-io` runtime
+///
+///
+/// ```no_run
+/// use tokio::net::TcpListener;
+///
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     retty_io::start(async {
+///         let listener = TcpListener::bind("127.0.0.1:8080").await?;
+///
+///         loop {
+///             let (socket, _) = listener.accept().await?;
+///             // process socket
+///         }
+///     })
+/// }
+/// ```
+pub fn start<F: Future>(future: F) -> F::Output {
+    let rt = runtime::Runtime::new(&builder()).unwrap();
+    rt.block_on(future)
 }
 
-pub use event_imp::{PollOpt, Ready};
-pub use poll::{Poll, Registration, SetReadiness};
-pub use token::Token;
-
-pub mod event {
-    //! Readiness event types and utilities.
-
-    pub use super::event_imp::{Event, Evented};
-    pub use super::poll::{Events, Iter};
+/// Creates and returns an io_uring::Builder that can then be modified
+/// through its implementation methods.
+///
+/// This function is provided to avoid requiring the user of this crate from
+/// having to use the io_uring crate as well. Refer to Builder::start example
+/// for its intended usage.
+pub fn uring_builder() -> io_uring::Builder {
+    io_uring::IoUring::builder()
 }
 
-pub use event::Events;
-
-#[deprecated(since = "0.6.5", note = "use events:: instead")]
-#[cfg(feature = "with-deprecated")]
-#[doc(hidden)]
-pub use event::{Event, Evented};
-
-#[deprecated(since = "0.6.5", note = "use events::Iter instead")]
-#[cfg(feature = "with-deprecated")]
-#[doc(hidden)]
-pub use poll::Iter as EventsIter;
-
-#[deprecated(since = "0.6.5", note = "std::io::Error can avoid the allocation now")]
-#[cfg(feature = "with-deprecated")]
-#[doc(hidden)]
-pub use io::deprecated::would_block;
-
-#[cfg(all(unix, not(target_os = "fuchsia")))]
-pub mod unix {
-    //! Unix only extensions
-    pub use sys::unix::UnixReady;
-    pub use sys::EventedFd;
+/// Builder API that can create and start the `io_uring` runtime with non-default parameters,
+/// while abstracting away the underlying io_uring crate.
+// #[derive(Clone, Default)]
+pub struct Builder {
+    entries: u32,
+    urb: io_uring::Builder,
 }
 
-#[cfg(target_os = "fuchsia")]
-pub mod fuchsia {
-    //! Fuchsia-only extensions
-    //!
-    //! # Stability
-    //!
-    //! This module depends on the [magenta-sys crate](https://crates.io/crates/magenta-sys)
-    //! and so might introduce breaking changes, even on minor releases,
-    //! so long as that crate remains unstable.
-    pub use sys::fuchsia::{zx_signals_t, FuchsiaReady};
-    pub use sys::EventedHandle;
-}
-
-/// Windows-only extensions to the retty-io crate.
+/// Constructs a [`Builder`] with default settings.
 ///
-/// retty-io on windows is currently implemented with IOCP for a high-performance
-/// implementation of asynchronous I/O. retty-io then provides TCP and UDP as sample
-/// bindings for the system to connect networking types to asynchronous I/O. On
-/// Unix this scheme is then also extensible to all other file descriptors with
-/// the `EventedFd` type, but on Windows no such analog is available. The
-/// purpose of this module, however, is to similarly provide a mechanism for
-/// foreign I/O types to get hooked up into the IOCP event loop.
+/// Use this to alter submission and completion queue parameters, and to create the io_uring
+/// Runtime.
 ///
-/// This module provides two types for interfacing with a custom IOCP handle:
-///
-/// * `Binding` - this type is intended to govern binding with retty-io's `Poll`
-///   type. Each I/O object should contain an instance of `Binding` that's
-///   interfaced with for the implementation of the `Evented` trait. The
-///   `register`, `reregister`, and `deregister` methods for the `Evented` trait
-///   all have rough analogs with `Binding`.
-///
-///   Note that this type **does not handle readiness**. That is, this type does
-///   not handle whether sockets are readable/writable/etc. It's intended that
-///   IOCP types will internally manage this state with a `SetReadiness` type
-///   from the `poll` module. The `SetReadiness` is typically lazily created on
-///   the first time that `Evented::register` is called and then stored in the
-///   I/O object.
-///
-///   Also note that for types which represent streams of bytes the retty-io
-///   interface of *readiness* doesn't map directly to the Windows model of
-///   *completion*. This means that types will have to perform internal
-///   buffering to ensure that a readiness interface can be provided. For a
-///   sample implementation see the TCP/UDP modules in retty-io itself.
-///
-/// * `Overlapped` - this type is intended to be used as the concrete instances
-///   of the `OVERLAPPED` type that most win32 methods expect. It's crucial, for
-///   safety, that all asynchronous operations are initiated with an instance of
-///   `Overlapped` and not another instantiation of `OVERLAPPED`.
-///
-///   retty-io's `Overlapped` type is created with a function pointer that receives
-///   a `OVERLAPPED_ENTRY` type when called. This `OVERLAPPED_ENTRY` type is
-///   defined in the `winapi` crate. Whenever a completion is posted to an IOCP
-///   object the `OVERLAPPED` that was signaled will be interpreted as
-///   `Overlapped` in the retty-io crate and this function pointer will be invoked.
-///   Through this function pointer, and through the `OVERLAPPED` pointer,
-///   implementations can handle management of I/O events.
-///
-/// When put together these two types enable custom Windows handles to be
-/// registered with retty-io's event loops. The `Binding` type is used to associate
-/// handles and the `Overlapped` type is used to execute I/O operations. When
-/// the I/O operations are completed a custom function pointer is called which
-/// typically modifies a `SetReadiness` set by `Evented` methods which will get
-/// later hooked into the retty-io event loop.
-#[cfg(windows)]
-pub mod windows {
-
-    pub use sys::{Binding, Overlapped};
-}
-
-#[cfg(feature = "with-deprecated")]
-mod convert {
-    use std::time::Duration;
-
-    const NANOS_PER_MILLI: u32 = 1_000_000;
-    const MILLIS_PER_SEC: u64 = 1_000;
-
-    /// Convert a `Duration` to milliseconds, rounding up and saturating at
-    /// `u64::MAX`.
-    ///
-    /// The saturating is fine because `u64::MAX` milliseconds are still many
-    /// million years.
-    pub fn millis(duration: Duration) -> u64 {
-        // Round up.
-        let millis = (duration.subsec_nanos() + NANOS_PER_MILLI - 1) / NANOS_PER_MILLI;
-        duration
-            .as_secs()
-            .saturating_mul(MILLIS_PER_SEC)
-            .saturating_add(u64::from(millis))
+/// Refer to [`Builder::start`] for an example.
+pub fn builder() -> Builder {
+    Builder {
+        entries: 256,
+        urb: io_uring::IoUring::builder(),
     }
+}
+
+impl Builder {
+    /// Sets the number of Submission Queue entries in uring.
+    ///
+    /// The default value is 256.
+    /// The kernel requires the number of submission queue entries to be a power of two,
+    /// and that it be less than the number of completion queue entries.
+    /// This function will adjust the `cq_entries` value to be at least 2 times `sq_entries`
+    pub fn entries(&mut self, sq_entries: u32) -> &mut Self {
+        self.entries = sq_entries;
+        self
+    }
+
+    /// Replaces the default [`io_uring::Builder`], which controls the settings for the
+    /// inner `io_uring` API.
+    ///
+    /// Refer to the [`io_uring::Builder`] documentation for all the supported methods.
+    pub fn uring_builder(&mut self, b: &io_uring::Builder) -> &mut Self {
+        self.urb = b.clone();
+        self
+    }
+
+    /// Starts an `io_uring` enabled Tokio runtime.
+    ///
+    /// # Examples
+    ///
+    /// Creating a uring driver with only 64 submission queue entries but
+    /// many more completion queue entries.
+    ///
+    /// ```no_run
+    /// use tokio::net::TcpListener;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     retty_io::builder()
+    ///         .entries(64)
+    ///         .uring_builder(retty_io::uring_builder()
+    ///             .setup_cqsize(1024)
+    ///             )
+    ///         .start(async {
+    ///             let listener = TcpListener::bind("127.0.0.1:8080").await?;
+    ///
+    ///             loop {
+    ///                 let (socket, _) = listener.accept().await?;
+    ///                 // process socket
+    ///             }
+    ///         }
+    ///     )
+    /// }
+    /// ```
+    pub fn start<F: Future>(&self, future: F) -> F::Output {
+        let rt = runtime::Runtime::new(self).unwrap();
+        rt.block_on(future)
+    }
+}
+
+/// A specialized `Result` type for `io-uring` operations with buffers.
+///
+/// This type is used as a return value for asynchronous `io-uring` methods that
+/// require passing ownership of a buffer to the runtime. When the operation
+/// completes, the buffer is returned whether or not the operation completed
+/// successfully.
+///
+/// # Examples
+///
+/// ```no_run
+/// use retty_io::fs::File;
+///
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     retty_io::start(async {
+///         // Open a file
+///         let file = File::open("hello.txt").await?;
+///
+///         let buf = vec![0; 4096];
+///         // Read some data, the buffer is passed by ownership and
+///         // submitted to the kernel. When the operation completes,
+///         // we get the buffer back.
+///         let (res, buf) = file.read_at(buf, 0).await;
+///         let n = res?;
+///
+///         // Display the contents
+///         println!("{:?}", &buf[..n]);
+///
+///         Ok(())
+///     })
+/// }
+/// ```
+pub type BufResult<T, B> = (std::io::Result<T>, B);
+
+/// The simplest possible operation. Just posts a completion event, nothing else.
+///
+/// This has a place in benchmarking and sanity checking uring.
+///
+/// # Examples
+///
+/// ```no_run
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     retty_io::start(async {
+///         // Place a NoOp on the ring, and await completion event
+///         retty_io::no_op().await?;
+///         Ok(())
+///     })
+/// }
+/// ```
+pub async fn no_op() -> std::io::Result<()> {
+    let op = Op::<io::NoOp>::no_op().unwrap();
+    op.await
 }

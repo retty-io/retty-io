@@ -20,5 +20,6 @@
  </a>
 </p>
 <p align="center">
- <a href="https://retty.io">retty-io</a> is a collection of metal IO library with non-blocking TCP, UDP, broadcast, channel and timer, etc.
+ <a href="https://retty.io">retty-io</a>: Yet another thread-per-core IO runtime. It is derived from retty-io, 
+but still uses mio with Epoll(Linux)/Kqueue(Mac)/IOCP(Windows), instead of io-uring(Linux only), as backed thread-per-core IO runtime.
 </p>

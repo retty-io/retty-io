@@ -1,14 +1,22 @@
-//! Networking primitives
+//! TCP/UDP bindings for `retty-io`.
 //!
-//! The types provided in this module are non-blocking by default and are
-//! designed to be portable across all supported retty-io platforms. As long as the
-//! [portability guidelines] are followed, the behavior should be identical no
-//! matter the target platform.
+//! This module contains the TCP/UDP networking types, similar to the standard
+//! library, which can be used to implement networking protocols.
 //!
-//! [portability guidelines]: ../struct.Poll.html#portability
+//! # Organization
+//!
+//! * [`TcpListener`] and [`TcpStream`] provide functionality for communication over TCP
+//! * [`UdpSocket`] provides functionality for communication over UDP
+
+//!
+//! [`TcpListener`]: TcpListener
+//! [`TcpStream`]: TcpStream
+//! [`UdpSocket`]: UdpSocket
 
 mod tcp;
 mod udp;
+mod unix;
 
-pub use self::tcp::{TcpListener, TcpStream};
-pub use self::udp::UdpSocket;
+pub use tcp::{TcpListener, TcpStream};
+pub use udp::UdpSocket;
+pub use unix::{UnixListener, UnixStream};

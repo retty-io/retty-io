@@ -1,654 +1,369 @@
-//! Primitives for working with UDP
-//!
-//! The types provided in this module are non-blocking by default and are
-//! designed to be portable across all supported retty-io platforms. As long as the
-//! [portability guidelines] are followed, the behavior should be identical no
-//! matter the target platform.
-//!
-use event::Evented;
-use poll::SelectorId;
-use std::fmt;
-use std::net::{self, Ipv4Addr, Ipv6Addr, SocketAddr};
-/// [portability guidelines]: ../struct.Poll.html#portability
-use {io, sys, Poll, PollOpt, Ready, Token};
+use crate::{
+    buf::fixed::FixedBuf,
+    buf::{BoundedBuf, BoundedBufMut},
+    io::{SharedFd, Socket},
+    UnsubmittedWrite,
+};
+use socket2::SockAddr;
+use std::{
+    io,
+    net::SocketAddr,
+    os::unix::prelude::{AsRawFd, FromRawFd, RawFd},
+};
 
-#[cfg(all(unix, not(target_os = "fuchsia")))]
-use iovec::IoVec;
-
-/// A User Datagram Protocol socket.
+/// A UDP socket.
 ///
-/// This is an implementation of a bound UDP socket. This supports both IPv4 and
-/// IPv6 addresses, and there is no corresponding notion of a server because UDP
-/// is a datagram protocol.
+/// UDP is "connectionless", unlike TCP. Meaning, regardless of what address you've bound to, a `UdpSocket`
+/// is free to communicate with many different remotes. In tokio there are basically two main ways to use `UdpSocket`:
+///
+/// * one to many: [`bind`](`UdpSocket::bind`) and use [`send_to`](`UdpSocket::send_to`)
+///   and [`recv_from`](`UdpSocket::recv_from`) to communicate with many different addresses
+/// * one to one: [`connect`](`UdpSocket::connect`) and associate with a single address, using [`write`](`UdpSocket::write`)
+///   and [`read`](`UdpSocket::read`) to communicate only with that remote address
 ///
 /// # Examples
+/// Bind and connect a pair of sockets and send a packet:
 ///
 /// ```
-/// # use std::error::Error;
-/// #
-/// # fn try_main() -> Result<(), Box<Error>> {
-/// // An Echo program:
-/// // SENDER -> sends a message.
-/// // ECHOER -> listens and prints the message received.
-///
 /// use retty_io::net::UdpSocket;
-/// use retty_io::{Events, Ready, Poll, PollOpt, Token};
-/// use std::time::Duration;
+/// use std::net::SocketAddr;
+/// fn main() -> std::io::Result<()> {
+///     retty_io::start(async {
+///         let first_addr: SocketAddr = "127.0.0.1:2401".parse().unwrap();
+///         let second_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
 ///
-/// const SENDER: Token = Token(0);
-/// const ECHOER: Token = Token(1);
+///         // bind sockets
+///         let socket = UdpSocket::bind(first_addr.clone()).await?;
+///         let other_socket = UdpSocket::bind(second_addr.clone()).await?;
 ///
-/// // This operation will fail if the address is in use, so we select different ports for each
-/// // socket.
-/// let sender_socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
-/// let echoer_socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
+///         // connect sockets
+///         socket.connect(second_addr).await.unwrap();
+///         other_socket.connect(first_addr).await.unwrap();
 ///
-/// // If we do not use connect here, SENDER and ECHOER would need to call send_to and recv_from
-/// // respectively.
-/// sender_socket.connect(echoer_socket.local_addr().unwrap())?;
+///         let buf = vec![0; 32];
 ///
-/// // We need a Poll to check if SENDER is ready to be written into, and if ECHOER is ready to be
-/// // read from.
-/// let poll = Poll::new()?;
+///         // write data
+///         let (result, _) = socket.write(b"hello world".as_slice()).submit().await;
+///         result.unwrap();
 ///
-/// // We register our sockets here so that we can check if they are ready to be written/read.
-/// poll.register(&sender_socket, SENDER, Ready::writable(), PollOpt::edge())?;
-/// poll.register(&echoer_socket, ECHOER, Ready::readable(), PollOpt::edge())?;
+///         // read data
+///         let (result, buf) = other_socket.read(buf).await;
+///         let n_bytes = result.unwrap();
 ///
-/// let msg_to_send = [9; 9];
-/// let mut buffer = [0; 9];
+///         assert_eq!(b"hello world", &buf[..n_bytes]);
 ///
-/// let mut events = Events::with_capacity(128);
-/// loop {
-///     poll.poll(&mut events, Some(Duration::from_millis(100)))?;
-///     for event in events.iter() {
-///         match event.token() {
-///             // Our SENDER is ready to be written into.
-///             SENDER => {
-///                 let bytes_sent = sender_socket.send(&msg_to_send)?;
-///                 assert_eq!(bytes_sent, 9);
-///                 println!("sent {:?} -> {:?} bytes", msg_to_send, bytes_sent);
-///             },
-///             // Our ECHOER is ready to be read from.
-///             ECHOER => {
-///                 let num_recv = echoer_socket.recv(&mut buffer)?;
-///                 println!("echo {:?} -> {:?}", buffer, num_recv);
-///                 buffer = [0; 9];
-///                 # return Ok(());
-///             }
-///             _ => unreachable!()
-///         }
-///     }
+///         // write data using send on connected socket
+///         let (result, _) = socket.send(b"hello world via send".as_slice()).await;
+///         result.unwrap();
+///
+///         // read data
+///         let (result, buf) = other_socket.read(buf).await;
+///         let n_bytes = result.unwrap();
+///
+///         assert_eq!(b"hello world via send", &buf[..n_bytes]);
+///
+///         Ok(())
+///     })
 /// }
-/// #
-/// #   Ok(())
-/// # }
-/// #
-/// # fn main() {
-/// #   try_main().unwrap();
-/// # }
+/// ```
+/// Send and receive packets without connecting:
+///
+/// ```
+/// use retty_io::net::UdpSocket;
+/// use std::net::SocketAddr;
+/// fn main() -> std::io::Result<()> {
+///     retty_io::start(async {
+///         let first_addr: SocketAddr = "127.0.0.1:2401".parse().unwrap();
+///         let second_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+///
+///         // bind sockets
+///         let socket = UdpSocket::bind(first_addr.clone()).await?;
+///         let other_socket = UdpSocket::bind(second_addr.clone()).await?;
+///
+///         let buf = vec![0; 32];
+///
+///         // write data
+///         let (result, _) = socket.send_to(b"hello world".as_slice(), second_addr).await;
+///         result.unwrap();
+///
+///         // read data
+///         let (result, buf) = other_socket.recv_from(buf).await;
+///         let (n_bytes, addr) = result.unwrap();
+///
+///         assert_eq!(addr, first_addr);
+///         assert_eq!(b"hello world", &buf[..n_bytes]);
+///
+///         Ok(())
+///     })
+/// }
 /// ```
 pub struct UdpSocket {
-    sys: sys::UdpSocket,
-    selector_id: SelectorId,
+    pub(super) inner: Socket,
 }
 
 impl UdpSocket {
-    /// Creates a UDP socket from the given address.
+    /// Creates a new UDP socket and attempt to bind it to the addr provided.
+    ///
+    /// Returns a new instance of [`UdpSocket`] on success,
+    /// or an [`io::Error`](std::io::Error) on failure.
+    pub async fn bind(socket_addr: SocketAddr) -> io::Result<UdpSocket> {
+        let socket = Socket::bind(socket_addr, libc::SOCK_DGRAM)?;
+        Ok(UdpSocket { inner: socket })
+    }
+
+    /// Returns the local address to which this UDP socket is bound.
+    ///
+    /// This can be useful, for example, when binding to port 0 to
+    /// figure out which port was actually bound.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use std::error::Error;
-    /// #
-    /// # fn try_main() -> Result<(), Box<Error>> {
+    /// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
     /// use retty_io::net::UdpSocket;
     ///
-    /// // We must bind it to an open address.
-    /// let socket = match UdpSocket::bind(&"127.0.0.1:0".parse()?) {
-    ///     Ok(new_socket) => new_socket,
-    ///     Err(fail) => {
-    ///         // We panic! here, but you could try to bind it again on another address.
-    ///         panic!("Failed to bind socket. {:?}", fail);
-    ///     }
-    /// };
-    ///
-    /// // Our socket was created, but we should not use it before checking it's readiness.
-    /// #    Ok(())
-    /// # }
-    /// #
-    /// # fn main() {
-    /// #   try_main().unwrap();
-    /// # }
-    /// ```
-    pub fn bind(addr: &SocketAddr) -> io::Result<UdpSocket> {
-        let socket = net::UdpSocket::bind(addr)?;
-        UdpSocket::from_socket(socket)
-    }
-
-    /// Creates a new retty-io-wrapped socket from an underlying and bound std
-    /// socket.
-    ///
-    /// This function requires that `socket` has previously been bound to an
-    /// address to work correctly, and returns an I/O object which can be used
-    /// with retty-io to send/receive UDP messages.
-    ///
-    /// This can be used in conjunction with net2's `UdpBuilder` interface to
-    /// configure a socket before it's handed off to retty-io, such as setting
-    /// options like `reuse_address` or binding to multiple addresses.
-    pub fn from_socket(socket: net::UdpSocket) -> io::Result<UdpSocket> {
-        Ok(UdpSocket {
-            sys: sys::UdpSocket::new(socket)?,
-            selector_id: SelectorId::new(),
-        })
-    }
-
-    /// Returns the socket address that this socket was created from.
-    ///
-    /// # Examples
-    ///
-    // This assertion is almost, but not quite, universal.  It fails on
-    // shared-IP FreeBSD jails.  It's hard for retty-io to know whether we're jailed,
-    // so simply disable the test on FreeBSD.
-    #[cfg_attr(not(target_os = "freebsd"), doc = " ```")]
-    #[cfg_attr(target_os = "freebsd", doc = " ```no_run")]
-    /// # use std::error::Error;
-    /// #
-    /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use retty_io::net::UdpSocket;
-    ///
-    /// let addr = "127.0.0.1:0".parse()?;
-    /// let socket = UdpSocket::bind(&addr)?;
-    /// #    Ok(())
-    /// # }
-    /// #
-    /// # fn main() {
-    /// #   try_main().unwrap();
-    /// # }
+    /// retty_io::start(async {
+    ///     let socket = UdpSocket::bind("127.0.0.1:8080".parse().unwrap()).await.unwrap();
+    ///     let addr = socket.local_addr().expect("Couldn't get local address");
+    ///     assert_eq!(addr, SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080)));
+    /// });
     /// ```
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        self.sys.local_addr()
+        let fd = self.inner.as_raw_fd();
+        // SAFETY: Our fd is the handle the kernel has given us for a UdpSocket.
+        // Create a std::net::UdpSocket long enough to call its local_addr method
+        // and then forget it so the socket is not closed here.
+        let s = unsafe { std::net::UdpSocket::from_raw_fd(fd) };
+        let local_addr = s.local_addr();
+        std::mem::forget(s);
+        local_addr
     }
 
-    /// Creates a new independently owned handle to the underlying socket.
+    /// Creates new `UdpSocket` from a previously bound `std::net::UdpSocket`.
     ///
-    /// The returned `UdpSocket` is a reference to the same socket that this
-    /// object references. Both handles will read and write the same port, and
-    /// options set on one socket will be propagated to the other.
+    /// This function is intended to be used to wrap a UDP socket from the
+    /// standard library in the retty-io equivalent. The conversion assumes nothing
+    /// about the underlying socket; it is left up to the user to decide what socket
+    /// options are appropriate for their use case.
     ///
-    /// # Examples
+    /// This can be used in conjunction with socket2's `Socket` interface to
+    /// configure a socket before it's handed off, such as setting options like
+    /// `reuse_address` or binding to multiple addresses.
+    ///
+    /// # Example
     ///
     /// ```
-    /// # use std::error::Error;
-    /// #
-    /// # fn try_main() -> Result<(), Box<Error>> {
+    /// use socket2::{Protocol, Socket, Type};
+    /// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
     /// use retty_io::net::UdpSocket;
     ///
-    /// // We must bind it to an open address.
-    /// let socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
-    /// let cloned_socket = socket.try_clone()?;
+    /// fn main() -> std::io::Result<()> {
+    ///     retty_io::start(async {
+    ///         let std_addr: SocketAddr = "127.0.0.1:2401".parse().unwrap();
+    ///         let second_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+    ///         let sock = Socket::new(socket2::Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+    ///         sock.set_reuse_port(true)?;
+    ///         sock.set_nonblocking(true)?;
+    ///         sock.bind(&std_addr.into())?;
     ///
-    /// assert_eq!(socket.local_addr()?, cloned_socket.local_addr()?);
+    ///         let std_socket = UdpSocket::from_std(sock.into());
+    ///         let other_socket = UdpSocket::bind(second_addr).await?;
     ///
-    /// #    Ok(())
-    /// # }
-    /// #
-    /// # fn main() {
-    /// #   try_main().unwrap();
-    /// # }
-    /// ```
-    pub fn try_clone(&self) -> io::Result<UdpSocket> {
-        self.sys.try_clone().map(|s| UdpSocket {
-            sys: s,
-            selector_id: self.selector_id.clone(),
-        })
-    }
-
-    /// Sends data on the socket to the given address. On success, returns the
-    /// number of bytes written.
+    ///         let buf = vec![0; 32];
     ///
-    /// Address type can be any implementor of `ToSocketAddrs` trait. See its
-    /// documentation for concrete examples.
+    ///         // write data
+    ///         let (result, _) = std_socket
+    ///             .send_to(b"hello world".as_slice(), second_addr)
+    ///             .await;
+    ///         result.unwrap();
     ///
-    /// # Examples
+    ///         // read data
+    ///         let (result, buf) = other_socket.recv_from(buf).await;
+    ///         let (n_bytes, addr) = result.unwrap();
     ///
-    /// ```no_run
-    /// # use std::error::Error;
-    /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use retty_io::net::UdpSocket;
+    ///         assert_eq!(addr, std_addr);
+    ///         assert_eq!(b"hello world", &buf[..n_bytes]);
     ///
-    /// let socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
-    ///
-    /// // We must check if the socket is writable before calling send_to,
-    /// // or we could run into a WouldBlock error.
-    ///
-    /// let bytes_sent = socket.send_to(&[9; 9], &"127.0.0.1:11100".parse()?)?;
-    /// assert_eq!(bytes_sent, 9);
-    /// #
-    /// #    Ok(())
-    /// # }
-    /// #
-    /// # fn main() {
-    /// #   try_main().unwrap();
-    /// # }
-    /// ```
-    pub fn send_to(&self, buf: &[u8], target: &SocketAddr) -> io::Result<usize> {
-        self.sys.send_to(buf, target)
-    }
-
-    /// Receives data from the socket. On success, returns the number of bytes
-    /// read and the address from whence the data came.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use std::error::Error;
-    /// #
-    /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use retty_io::net::UdpSocket;
-    ///
-    /// let socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
-    ///
-    /// // We must check if the socket is readable before calling recv_from,
-    /// // or we could run into a WouldBlock error.
-    ///
-    /// let mut buf = [0; 9];
-    /// let (num_recv, from_addr) = socket.recv_from(&mut buf)?;
-    /// println!("Received {:?} -> {:?} bytes from {:?}", buf, num_recv, from_addr);
-    /// #
-    /// #    Ok(())
-    /// # }
-    /// #
-    /// # fn main() {
-    /// #   try_main().unwrap();
-    /// # }
-    /// ```
-    pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        self.sys.recv_from(buf)
-    }
-
-    /// Sends data on the socket to the address previously bound via connect(). On success,
-    /// returns the number of bytes written.
-    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        self.sys.send(buf)
-    }
-
-    /// Receives data from the socket previously bound with connect(). On success, returns
-    /// the number of bytes read.
-    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.sys.recv(buf)
-    }
-
-    /// Connects the UDP socket setting the default destination for `send()`
-    /// and limiting packets that are read via `recv` from the address specified
-    /// in `addr`.
-    pub fn connect(&self, addr: SocketAddr) -> io::Result<()> {
-        self.sys.connect(addr)
-    }
-
-    /// Sets the value of the `SO_BROADCAST` option for this socket.
-    ///
-    /// When enabled, this socket is allowed to send packets to a broadcast
-    /// address.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use std::error::Error;
-    /// #
-    /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use retty_io::net::UdpSocket;
-    ///
-    /// let broadcast_socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
-    /// if broadcast_socket.broadcast()? == false {
-    ///     broadcast_socket.set_broadcast(true)?;
+    ///         Ok(())
+    ///     })
     /// }
-    ///
-    /// assert_eq!(broadcast_socket.broadcast()?, true);
-    /// #
-    /// #    Ok(())
-    /// # }
-    /// #
-    /// # fn main() {
-    /// #   try_main().unwrap();
-    /// # }
     /// ```
-    pub fn set_broadcast(&self, on: bool) -> io::Result<()> {
-        self.sys.set_broadcast(on)
+    pub fn from_std(socket: std::net::UdpSocket) -> Self {
+        let inner = Socket::from_std(socket);
+        Self { inner }
     }
 
-    /// Gets the value of the `SO_BROADCAST` option for this socket.
-    ///
-    /// For more information about this option, see
-    /// [`set_broadcast`][link].
-    ///
-    /// [link]: #method.set_broadcast
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use std::error::Error;
-    /// #
-    /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use retty_io::net::UdpSocket;
-    ///
-    /// let broadcast_socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
-    /// assert_eq!(broadcast_socket.broadcast()?, false);
-    /// #
-    /// #    Ok(())
-    /// # }
-    /// #
-    /// # fn main() {
-    /// #   try_main().unwrap();
-    /// # }
-    /// ```
-    pub fn broadcast(&self) -> io::Result<bool> {
-        self.sys.broadcast()
+    pub(crate) fn from_socket(inner: Socket) -> Self {
+        Self { inner }
     }
 
-    /// Sets the value of the `IP_MULTICAST_LOOP` option for this socket.
+    /// "Connects" this UDP socket to a remote address.
     ///
-    /// If enabled, multicast packets will be looped back to the local socket.
-    /// Note that this may not have any affect on IPv6 sockets.
-    pub fn set_multicast_loop_v4(&self, on: bool) -> io::Result<()> {
-        self.sys.set_multicast_loop_v4(on)
+    /// This enables `write` and `read` syscalls to be used on this instance.
+    /// It also constrains the `read` to receive data only from the specified remote peer.
+    ///
+    /// Note: UDP is connectionless, so a successful `connect` call does not execute
+    /// a handshake or validation of the remote peer of any kind.
+    /// Any errors would not be detected until the first send.
+    pub async fn connect(&self, socket_addr: SocketAddr) -> io::Result<()> {
+        self.inner.connect(SockAddr::from(socket_addr)).await
     }
 
-    /// Gets the value of the `IP_MULTICAST_LOOP` option for this socket.
+    /// Sends data on the connected socket
     ///
-    /// For more information about this option, see
-    /// [`set_multicast_loop_v4`][link].
-    ///
-    /// [link]: #method.set_multicast_loop_v4
-    pub fn multicast_loop_v4(&self) -> io::Result<bool> {
-        self.sys.multicast_loop_v4()
+    /// On success, returns the number of bytes written.
+    pub async fn send<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
+        self.inner.send_to(buf, None).await
     }
 
-    /// Sets the value of the `IP_MULTICAST_TTL` option for this socket.
+    /// Sends data on the socket to the given address.
     ///
-    /// Indicates the time-to-live value of outgoing multicast packets for
-    /// this socket. The default value is 1 which means that multicast packets
-    /// don't leave the local network unless explicitly requested.
-    ///
-    /// Note that this may not have any affect on IPv6 sockets.
-    pub fn set_multicast_ttl_v4(&self, ttl: u32) -> io::Result<()> {
-        self.sys.set_multicast_ttl_v4(ttl)
-    }
-
-    /// Gets the value of the `IP_MULTICAST_TTL` option for this socket.
-    ///
-    /// For more information about this option, see
-    /// [`set_multicast_ttl_v4`][link].
-    ///
-    /// [link]: #method.set_multicast_ttl_v4
-    pub fn multicast_ttl_v4(&self) -> io::Result<u32> {
-        self.sys.multicast_ttl_v4()
-    }
-
-    /// Sets the value of the `IPV6_MULTICAST_LOOP` option for this socket.
-    ///
-    /// Controls whether this socket sees the multicast packets it sends itself.
-    /// Note that this may not have any affect on IPv4 sockets.
-    pub fn set_multicast_loop_v6(&self, on: bool) -> io::Result<()> {
-        self.sys.set_multicast_loop_v6(on)
-    }
-
-    /// Gets the value of the `IPV6_MULTICAST_LOOP` option for this socket.
-    ///
-    /// For more information about this option, see
-    /// [`set_multicast_loop_v6`][link].
-    ///
-    /// [link]: #method.set_multicast_loop_v6
-    pub fn multicast_loop_v6(&self) -> io::Result<bool> {
-        self.sys.multicast_loop_v6()
-    }
-
-    /// Sets the value for the `IP_TTL` option on this socket.
-    ///
-    /// This value sets the time-to-live field that is used in every packet sent
-    /// from this socket.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use std::error::Error;
-    /// #
-    /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use retty_io::net::UdpSocket;
-    ///
-    /// let socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
-    /// if socket.ttl()? < 255 {
-    ///     socket.set_ttl(255)?;
-    /// }
-    ///
-    /// assert_eq!(socket.ttl()?, 255);
-    /// #
-    /// #    Ok(())
-    /// # }
-    /// #
-    /// # fn main() {
-    /// #   try_main().unwrap();
-    /// # }
-    /// ```
-    pub fn set_ttl(&self, ttl: u32) -> io::Result<()> {
-        self.sys.set_ttl(ttl)
-    }
-
-    /// Gets the value of the `IP_TTL` option for this socket.
-    ///
-    /// For more information about this option, see [`set_ttl`][link].
-    ///
-    /// [link]: #method.set_ttl
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use std::error::Error;
-    /// #
-    /// # fn try_main() -> Result<(), Box<Error>> {
-    /// use retty_io::net::UdpSocket;
-    ///
-    /// let socket = UdpSocket::bind(&"127.0.0.1:0".parse()?)?;
-    /// socket.set_ttl(255)?;
-    ///
-    /// assert_eq!(socket.ttl()?, 255);
-    /// #
-    /// #    Ok(())
-    /// # }
-    /// #
-    /// # fn main() {
-    /// #   try_main().unwrap();
-    /// # }
-    /// ```
-    pub fn ttl(&self) -> io::Result<u32> {
-        self.sys.ttl()
-    }
-
-    /// Executes an operation of the `IP_ADD_MEMBERSHIP` type.
-    ///
-    /// This function specifies a new multicast group for this socket to join.
-    /// The address must be a valid multicast address, and `interface` is the
-    /// address of the local interface with which the system should join the
-    /// multicast group. If it's equal to `INADDR_ANY` then an appropriate
-    /// interface is chosen by the system.
-    pub fn join_multicast_v4(&self, multiaddr: &Ipv4Addr, interface: &Ipv4Addr) -> io::Result<()> {
-        self.sys.join_multicast_v4(multiaddr, interface)
-    }
-
-    /// Executes an operation of the `IPV6_ADD_MEMBERSHIP` type.
-    ///
-    /// This function specifies a new multicast group for this socket to join.
-    /// The address must be a valid multicast address, and `interface` is the
-    /// index of the interface to join/leave (or 0 to indicate any interface).
-    pub fn join_multicast_v6(&self, multiaddr: &Ipv6Addr, interface: u32) -> io::Result<()> {
-        self.sys.join_multicast_v6(multiaddr, interface)
-    }
-
-    /// Executes an operation of the `IP_DROP_MEMBERSHIP` type.
-    ///
-    /// For more information about this option, see
-    /// [`join_multicast_v4`][link].
-    ///
-    /// [link]: #method.join_multicast_v4
-    pub fn leave_multicast_v4(&self, multiaddr: &Ipv4Addr, interface: &Ipv4Addr) -> io::Result<()> {
-        self.sys.leave_multicast_v4(multiaddr, interface)
-    }
-
-    /// Executes an operation of the `IPV6_DROP_MEMBERSHIP` type.
-    ///
-    /// For more information about this option, see
-    /// [`join_multicast_v6`][link].
-    ///
-    /// [link]: #method.join_multicast_v6
-    pub fn leave_multicast_v6(&self, multiaddr: &Ipv6Addr, interface: u32) -> io::Result<()> {
-        self.sys.leave_multicast_v6(multiaddr, interface)
-    }
-
-    /// Sets the value for the `IPV6_V6ONLY` option on this socket.
-    ///
-    /// If this is set to `true` then the socket is restricted to sending and
-    /// receiving IPv6 packets only. In this case two IPv4 and IPv6 applications
-    /// can bind the same port at the same time.
-    ///
-    /// If this is set to `false` then the socket can be used to send and
-    /// receive packets from an IPv4-mapped IPv6 address.
-    pub fn set_only_v6(&self, only_v6: bool) -> io::Result<()> {
-        self.sys.set_only_v6(only_v6)
-    }
-
-    /// Gets the value of the `IPV6_V6ONLY` option for this socket.
-    ///
-    /// For more information about this option, see [`set_only_v6`][link].
-    ///
-    /// [link]: #method.set_only_v6
-    pub fn only_v6(&self) -> io::Result<bool> {
-        self.sys.only_v6()
-    }
-
-    /// Get the value of the `SO_ERROR` option on this socket.
-    ///
-    /// This will retrieve the stored error in the underlying socket, clearing
-    /// the field in the process. This can be useful for checking errors between
-    /// calls.
-    pub fn take_error(&self) -> io::Result<Option<io::Error>> {
-        self.sys.take_error()
-    }
-
-    /// Receives a single datagram message socket previously bound with connect.
-    ///
-    /// This operation will attempt to read bytes from this socket and place
-    /// them into the list of buffers provided. Note that each buffer is an
-    /// `IoVec` which can be created from a byte slice.
-    ///
-    /// The buffers provided will be filled sequentially. A buffer will be
-    /// entirely filled up before the next is written to.
-    ///
-    /// The number of bytes read is returned, if successful, or an error is
-    /// returned otherwise. If no bytes are available to be read yet then
-    /// a [`WouldBlock`][link] error is returned. This operation does not block.
-    ///
-    /// On Unix this corresponds to the `readv` syscall.
-    ///
-    /// [link]: https://doc.rust-lang.org/nightly/std/io/enum.ErrorKind.html#variant.WouldBlock
-    #[cfg(all(unix, not(target_os = "fuchsia")))]
-    pub fn recv_bufs(&self, bufs: &mut [&mut IoVec]) -> io::Result<usize> {
-        self.sys.readv(bufs)
-    }
-
-    /// Sends data on the socket to the address previously bound via connect.
-    ///
-    /// This operation will attempt to send a list of byte buffers to this
-    /// socket in a single datagram. Note that each buffer is an `IoVec`
-    /// which can be created from a byte slice.
-    ///
-    /// The buffers provided will be written sequentially. A buffer will be
-    /// entirely written before the next is written.
-    ///
-    /// The number of bytes written is returned, if successful, or an error is
-    /// returned otherwise. If the socket is not currently writable then a
-    /// [`WouldBlock`][link] error is returned. This operation does not block.
-    ///
-    /// On Unix this corresponds to the `writev` syscall.
-    ///
-    /// [link]: https://doc.rust-lang.org/nightly/std/io/enum.ErrorKind.html#variant.WouldBlock
-    #[cfg(all(unix, not(target_os = "fuchsia")))]
-    pub fn send_bufs(&self, bufs: &[&IoVec]) -> io::Result<usize> {
-        self.sys.writev(bufs)
-    }
-}
-
-impl Evented for UdpSocket {
-    fn register(
+    /// On success, returns the number of bytes written.
+    pub async fn send_to<T: BoundedBuf>(
         &self,
-        poll: &Poll,
-        token: Token,
-        interest: Ready,
-        opts: PollOpt,
-    ) -> io::Result<()> {
-        self.selector_id.associate_selector(poll)?;
-        self.sys.register(poll, token, interest, opts)
+        buf: T,
+        socket_addr: SocketAddr,
+    ) -> crate::BufResult<usize, T> {
+        self.inner.send_to(buf, Some(socket_addr)).await
     }
 
-    fn reregister(
+    /// Sends data on the socket. Will attempt to do so without intermediate copies.
+    ///
+    /// On success, returns the number of bytes written.
+    ///
+    /// See the linux [kernel docs](https://www.kernel.org/doc/html/latest/networking/msg_zerocopy.html)
+    /// for a discussion on when this might be appropriate. In particular:
+    ///
+    /// > Copy avoidance is not a free lunch. As implemented, with page pinning,
+    /// > it replaces per byte copy cost with page accounting and completion
+    /// > notification overhead. As a result, zero copy is generally only effective
+    /// > at writes over around 10 KB.
+    ///
+    /// Note: Using fixed buffers [#54](https://github.com/tokio-rs/retty-io/pull/54), avoids the page-pinning overhead
+    pub async fn send_zc<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
+        self.inner.send_zc(buf).await
+    }
+
+    /// Sends a message on the socket using a msghdr.
+    ///
+    /// Returns a tuple of:
+    ///
+    /// * Result containing bytes written on success
+    /// * The original `io_slices` `Vec<T>`
+    /// * The original `msg_contol` `Option<U>`
+    ///
+    /// See the linux [kernel docs](https://www.kernel.org/doc/html/latest/networking/msg_zerocopy.html)
+    /// for a discussion on when this might be appropriate. In particular:
+    ///
+    /// > Copy avoidance is not a free lunch. As implemented, with page pinning,
+    /// > it replaces per byte copy cost with page accounting and completion
+    /// > notification overhead. As a result, zero copy is generally only effective
+    /// > at writes over around 10 KB.
+    ///
+    /// Can be used with socket_addr: None on connected sockets, which can have performance
+    /// benefits if multiple datagrams are sent to the same destination address.
+    pub async fn sendmsg_zc<T: BoundedBuf, U: BoundedBuf>(
         &self,
-        poll: &Poll,
-        token: Token,
-        interest: Ready,
-        opts: PollOpt,
-    ) -> io::Result<()> {
-        self.sys.reregister(poll, token, interest, opts)
+        io_slices: Vec<T>,
+        socket_addr: Option<SocketAddr>,
+        msg_control: Option<U>,
+    ) -> (io::Result<usize>, Vec<T>, Option<U>) {
+        self.inner
+            .sendmsg_zc(io_slices, socket_addr, msg_control)
+            .await
     }
 
-    fn deregister(&self, poll: &Poll) -> io::Result<()> {
-        self.sys.deregister(poll)
+    /// Receives a single datagram message on the socket.
+    ///
+    /// On success, returns the number of bytes read and the origin.
+    pub async fn recv_from<T: BoundedBufMut>(
+        &self,
+        buf: T,
+    ) -> crate::BufResult<(usize, SocketAddr), T> {
+        self.inner.recv_from(buf).await
+    }
+
+    /// Receives a single datagram message on the socket, into multiple buffers
+    ///
+    /// On success, returns the number of bytes read and the origin.
+    pub async fn recvmsg<T: BoundedBufMut>(
+        &self,
+        buf: Vec<T>,
+    ) -> crate::BufResult<(usize, SocketAddr), Vec<T>> {
+        self.inner.recvmsg(buf).await
+    }
+
+    /// Reads a packet of data from the socket into the buffer.
+    ///
+    /// Returns the original buffer and quantity of data read.
+    pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
+        self.inner.read(buf).await
+    }
+
+    /// Receives a single datagram message into a registered buffer.
+    ///
+    /// Like [`read`], but using a pre-mapped buffer
+    /// registered with [`FixedBufRegistry`].
+    ///
+    /// [`read`]: Self::read
+    /// [`FixedBufRegistry`]: crate::buf::fixed::FixedBufRegistry
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors that can be reported by `read`,
+    /// this operation fails if the buffer is not registered in the
+    /// current `retty-io` runtime.
+    pub async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBufMut<BufMut = FixedBuf>,
+    {
+        self.inner.read_fixed(buf).await
+    }
+
+    /// Writes data into the socket from the specified buffer.
+    ///
+    /// Returns the original buffer and quantity of data written.
+    pub fn write<T: BoundedBuf>(&self, buf: T) -> UnsubmittedWrite<T> {
+        self.inner.write(buf)
+    }
+
+    /// Writes data into the socket from a registered buffer.
+    ///
+    /// Like [`write`], but using a pre-mapped buffer
+    /// registered with [`FixedBufRegistry`].
+    ///
+    /// [`write`]: Self::write
+    /// [`FixedBufRegistry`]: crate::buf::fixed::FixedBufRegistry
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors that can be reported by `write`,
+    /// this operation fails if the buffer is not registered in the
+    /// current `retty-io` runtime.
+    pub async fn write_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
+        self.inner.write_fixed(buf).await
+    }
+
+    /// Shuts down the read, write, or both halves of this connection.
+    ///
+    /// This function causes all pending and future I/O on the specified portions to return
+    /// immediately with an appropriate value.
+    pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
+        self.inner.shutdown(how)
     }
 }
 
-impl fmt::Debug for UdpSocket {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(&self.sys, f)
+impl FromRawFd for UdpSocket {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        UdpSocket::from_socket(Socket::from_shared_fd(SharedFd::new(fd)))
     }
 }
 
-/*
- *
- * ===== UNIX ext =====
- *
- */
-
-#[cfg(all(unix, not(target_os = "fuchsia")))]
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
-
-#[cfg(all(unix, not(target_os = "fuchsia")))]
-impl IntoRawFd for UdpSocket {
-    fn into_raw_fd(self) -> RawFd {
-        self.sys.into_raw_fd()
-    }
-}
-
-#[cfg(all(unix, not(target_os = "fuchsia")))]
 impl AsRawFd for UdpSocket {
     fn as_raw_fd(&self) -> RawFd {
-        self.sys.as_raw_fd()
-    }
-}
-
-#[cfg(all(unix, not(target_os = "fuchsia")))]
-impl FromRawFd for UdpSocket {
-    unsafe fn from_raw_fd(fd: RawFd) -> UdpSocket {
-        UdpSocket {
-            sys: FromRawFd::from_raw_fd(fd),
-            selector_id: SelectorId::new(),
-        }
-    }
-}
-
-#[cfg(windows)]
-use std::os::windows::io::{AsRawSocket, RawSocket};
-
-#[cfg(windows)]
-impl AsRawSocket for UdpSocket {
-    fn as_raw_socket(&self) -> RawSocket {
-        self.sys.as_raw_socket()
+        self.inner.as_raw_fd()
     }
 }
