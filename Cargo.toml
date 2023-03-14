@@ -1,44 +1,6 @@
-[package]
-name = "retty-io"
-version = "0.3.0"
-authors = ["Rusty Rain <y@liu.mx>"]
-description = "A collection of metal IO library with non-blocking TCP, UDP, broadcast, channel and timer, etc"
-license = "MIT/Apache-2.0"
-documentation = "https://docs.rs/retty-io"
-repository = "https://github.com/retty-io/retty-io"
-homepage = "https://retty.io"
-keywords = ["networking", "protocols"]
-categories = [ "network-programming", "asynchronous" ]
+[workspace]
 
-[features]
-with-deprecated = []
-default = ["with-deprecated"]
-
-[dependencies]
-crossbeam = "0.8.2"
-log      = "0.4"
-slab     = "0.4.0"
-net2     = "0.2.36"
-iovec    = "0.1.1"
-cfg-if   = "0.1.9"
-
-[target.'cfg(target_os = "fuchsia")'.dependencies]
-fuchsia-zircon = "0.3.2"
-fuchsia-zircon-sys = "0.3.2"
-
-[target.'cfg(unix)'.dependencies]
-libc   = "0.2.54"
-
-[target.'cfg(windows)'.dependencies]
-winapi = "0.2.6"
-miow   = "0.2.2"
-kernel32-sys = "0.2"
-
-[dev-dependencies]
-env_logger = { version = "0.4.0", default-features = false }
-tempdir    = "0.3.4"
-bytes      = "0.3.0"
-
-[[test]]
-name = "test"
-path = "test/mod.rs"
+members = [
+    "retty-io",
+    "retty-macros",
+]
